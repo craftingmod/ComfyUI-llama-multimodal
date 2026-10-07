@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from backend.llama_cpp_supervisor import _forward_server_stdout
+from backend.llama_cpp.llama_cpp_supervisor import _forward_server_stdout
 
 
 def test_server_stdout_suppresses_bracketed_numeric_lines(monkeypatch):
@@ -25,7 +25,7 @@ def test_owner_pipe_eof_stops_the_owned_server(tmp_path):
         "time.sleep(60)"
     )
     root = Path(__file__).resolve().parents[2]
-    supervisor_path = root / "backend" / "llama_cpp_supervisor.py"
+    supervisor_path = root / "backend" / "llama_cpp" / "llama_cpp_supervisor.py"
     supervisor = subprocess.Popen(
         [
             sys.executable,

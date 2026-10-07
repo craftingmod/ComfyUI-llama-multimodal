@@ -25,7 +25,7 @@ from ..core import (
     unwrap_optional_scalar,
     unwrap_required_scalar,
 )
-from ..llama_cpp_runtime import (
+from ..llama_cpp.llama_cpp_runtime import (
     _llama_child_environment,
     _resolve_llama_executable,
     start_owned_llama_server,

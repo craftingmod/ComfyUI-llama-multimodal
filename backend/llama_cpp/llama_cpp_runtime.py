@@ -27,12 +27,17 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from aiohttp import web
 
-from .llm_model_paths import (
+from ..llm_model_paths import (
     get_default_llm_model_directory,
     get_llm_model_directories,
     resolve_llm_model_directory,
 )
-from .scoped_process import ScopedProcess
+from ..scoped_process import ScopedProcess
+from .llama_cpp_release_b11429 import (
+    _LLAMA_RELEASE,
+    _LLAMA_RELEASE_URL,
+    _RELEASE_ASSETS,
+)
 
 RUNTIME_ROUTE = "/ollama_image_list/llama_cpp/runtime"
 RUNTIME_RESTART_ROUTE = f"{RUNTIME_ROUTE}/restart"
@@ -50,8 +55,6 @@ _HEALTH_POLL_INTERVAL_SECONDS = 0.2
 _SUPERVISOR_SHUTDOWN_TIMEOUT_SECONDS = 8
 _VERSION_PROBE_TIMEOUT = 3
 _VERSION_DISPLAY_LIMIT = 256
-_LLAMA_RELEASE = "b11146"
-_LLAMA_RELEASE_URL = "https://github.com/ggml-org/llama.cpp/releases/download/b11146/{}"
 _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _DOWNLOAD_TIMEOUT_SECONDS = 30
 _INSTALL_MARKER = "install.json"
@@ -59,96 +62,6 @@ _ALLOWED_REDIRECT_HOSTS = {
     "github.com",
     "release-assets.githubusercontent.com",
     "objects.githubusercontent.com",
-}
-_RELEASE_ASSETS: dict[tuple[str, str, str], tuple[tuple[str, str], ...]] = {
-    ("windows", "x64", "cpu"): (
-        (
-            "llama-b11146-bin-win-cpu-x64.zip",
-            "14cf1303ca9ac3abd94816850532f9f9a69ac66fbaca3776fc6f9061c2fac1d1",
-        ),
-    ),
-    ("windows", "arm64", "cpu"): (
-        (
-            "llama-b11146-bin-win-cpu-arm64.zip",
-            "1727d241f3bf6d27360e984e851cf013928fd655bf89f8628e70da027f377b7d",
-        ),
-    ),
-    ("windows", "x64", "cuda"): (
-        (
-            "llama-b11146-bin-win-cuda-13.4-x64.zip",
-            "b1866c0ce76bc7bfb0c24b33e9a37e9669f1be18539b12c74ce361f81c41f047",
-        ),
-        (
-            "cudart-llama-bin-win-cuda-13.4-x64.zip",
-            "738f8c251ac22b70c3ae6f83a10cf222725df0395246a2cf58f32bdb85fbe668",
-        ),
-    ),
-    ("windows", "arm64", "cuda"): (
-        (
-            "llama-b11146-bin-win-cuda-13.4-arm64.zip",
-            "a4060b5031a0e862e225d4a7c4aa403852ebedf598906ef8258a86cb77de8351",
-        ),
-        (
-            "cudart-llama-bin-win-cuda-13.4-arm64.zip",
-            "642dcde8805b3e3165ca710a5443b3b4044b27d96bd3ee3132473988c9bcb774",
-        ),
-    ),
-    ("windows", "x64", "rocm"): (
-        (
-            "llama-b11146-bin-win-rocm-10.0-x64.zip",
-            "5dee283ec0fd5f38f29df0929769a07266ac6047f74381c153eb54b441e4ef99",
-        ),
-    ),
-    ("macos", "x64", "cpu"): (
-        (
-            "llama-b11146-bin-macos-x64.tar.gz",
-            "305f0e3a17d2c01eb205cd0a62128357f1ec3b55329cb084d94e5ec0115d7a3b",
-        ),
-    ),
-    ("macos", "arm64", "cpu"): (
-        (
-            "llama-b11146-bin-macos-arm64.tar.gz",
-            "1ad3f9eff80edb9dbef4259ad564d1720612ef7eea48fa4afed0e54f5f3d5711",
-        ),
-    ),
-    ("linux", "x64", "cpu"): (
-        (
-            "llama-b11146-bin-ubuntu-x64.tar.gz",
-            "c150306eb16b5ab696f76a8bdf810c35fd98a24e82158742e6fa28f420ff8410",
-        ),
-    ),
-    ("linux", "arm64", "cpu"): (
-        (
-            "llama-b11146-bin-ubuntu-arm64.tar.gz",
-            "4aeda6fe68831547e49b7fa87607383ca5352b3d72ca5f70d52ed265f58c131f",
-        ),
-    ),
-    ("linux", "x64", "cuda"): (
-        (
-            "llama-b11146-bin-ubuntu-cuda-13.4-x64.tar.gz",
-            "1603d9c00a4b6eac8298c5c7868cdb080a3ac31948ab1e457441d71ce274dd7e",
-        ),
-        (
-            "cudart-llama-b11146-bin-ubuntu-cuda-13.4-x64.tar.gz",
-            "7c2af505f8b26ecd3707ab7723fa985fee1df233b7c1d60e5e17724b536d15bb",
-        ),
-    ),
-    ("linux", "arm64", "cuda"): (
-        (
-            "llama-b11146-bin-ubuntu-cuda-13.4-arm64.tar.gz",
-            "4e00496ab6cdee9c00afb11de3cb9d10f9da7e17147d8ed14ca3af05209b400f",
-        ),
-        (
-            "cudart-llama-b11146-bin-ubuntu-cuda-13.4-arm64.tar.gz",
-            "7f46057efcba6338c58ed9f91c06f268c290f3a228fdbdd4bea229dd60b0e094",
-        ),
-    ),
-    ("linux", "x64", "rocm"): (
-        (
-            "llama-b11146-bin-ubuntu-rocm-10.0-x64.tar.gz",
-            "50e79dc559a11af3ea59391d416e9a704a715ac6be94352dbba710782c5dd7d1",
-        ),
-    ),
 }
 _logger = logging.getLogger(__name__)
 _lock = Lock()
@@ -309,7 +222,9 @@ def _select_release_asset(
     assets = _RELEASE_ASSETS.get(key)
     if assets is None:
         description = f"{os_name} {arch} {backend}"
-        raise ValueError(f"No b11146 llama.cpp build is available for {description}.")
+        raise ValueError(
+            f"No {_LLAMA_RELEASE} llama.cpp build is available for {description}."
+        )
 
     backend_label = {
         "cpu": "CPU",
@@ -355,18 +270,22 @@ def _artifacts_directory() -> Path:
     return _config_path().parent / "artifacts"
 
 
-def _installation_directory(selection: dict[str, Any]) -> Path:
-    return _artifacts_directory() / _LLAMA_RELEASE / selection["directory"]
+def _installation_directory(
+    selection: dict[str, Any], release: str = _LLAMA_RELEASE
+) -> Path:
+    return _artifacts_directory() / release / selection["directory"]
 
 
-def _installed_llama_executable(selection: dict[str, Any]) -> str | None:
+def _installed_llama_executable(
+    selection: dict[str, Any], release: str = _LLAMA_RELEASE
+) -> str | None:
     try:
-        install_dir = _installation_directory(selection)
+        install_dir = _installation_directory(selection, release)
         marker_path = install_dir / _INSTALL_MARKER
         marker = json.loads(marker_path.read_text(encoding="utf-8"))
         executable_name = marker["executable"]
         if (
-            marker.get("release") != _LLAMA_RELEASE
+            marker.get("release") != release
             or marker.get("target") != selection["directory"]
             or not isinstance(executable_name, str)
         ):
@@ -389,6 +308,36 @@ def _installed_llama_executable(selection: dict[str, Any]) -> str | None:
         return None
 
 
+def _older_installed_llama_executable(
+    selection: dict[str, Any],
+) -> tuple[str, str] | None:
+    try:
+        releases = tuple(_artifacts_directory().iterdir())
+    except OSError:
+        return None
+    current_build = int(_LLAMA_RELEASE[1:])
+    older_releases = sorted(
+        (
+            path
+            for path in releases
+            if path.is_dir()
+            and not path.is_symlink()
+            and path.name.startswith("b")
+            and path.name[1:].isdigit()
+            and int(path.name[1:]) < current_build
+        ),
+        key=lambda path: int(path.name[1:]),
+        reverse=True,
+    )
+    for release_dir in older_releases:
+        if (release_dir / selection["directory"]).is_symlink():
+            continue
+        executable = _installed_llama_executable(selection, release_dir.name)
+        if executable:
+            return release_dir.name, executable
+    return None
+
+
 def _path_llama_executable() -> str | None:
     executable = shutil.which("llama")
     return str(Path(executable).resolve()) if executable else None
@@ -406,7 +355,10 @@ def _resolve_llama_executable(
         except (RuntimeError, ValueError):
             return None, None
     executable = _installed_llama_executable(selection)
-    return (executable, "internal") if executable else (None, None)
+    if executable:
+        return executable, "internal"
+    older_install = _older_installed_llama_executable(selection)
+    return (older_install[1], "internal") if older_install else (None, None)
 
 
 def _valid_ctx_size(value: Any) -> bool:
@@ -671,7 +623,8 @@ def _find_llama_executable(root: Path, os_name: str) -> Path:
     )
     if len(matches) != 1:
         raise RuntimeError(
-            f"Expected one {expected_name} in the b11146 archive; found {len(matches)}."
+            f"Expected one {expected_name} in the "
+            f"{_LLAMA_RELEASE} archive; found {len(matches)}."
         )
     return matches[0]
 
@@ -750,9 +703,9 @@ def _set_download_state(
 
 
 def _download_and_install(selection: dict[str, Any]) -> None:
-    global _version_probe_executable, _llama_version, _start_attempted
-    global _download_thread
+    global _version_probe_executable, _llama_version, _download_thread
     try:
+        is_update = _older_installed_llama_executable(selection) is not None
         artifacts_dir = _artifacts_directory()
         version_dir = artifacts_dir / _LLAMA_RELEASE
         version_dir.mkdir(parents=True, exist_ok=True)
@@ -829,12 +782,14 @@ def _download_and_install(selection: dict[str, Any]) -> None:
         with _lock:
             _version_probe_executable = installed_executable
             _llama_version = version
-            if (
-                _auto_start
-                and _last_error == "'llama' executable was not found in PATH."
-            ):
-                _start_attempted = False
-                _start_locked()
+            restart_after_install = _auto_start and (
+                is_update or _last_error == "'llama' executable was not found in PATH."
+            )
+        if restart_after_install:
+            try:
+                restart_runtime(wait=True)
+            except _RestartDisabled:
+                pass
         _set_download_state("installed", target=selection["label"])
     except Exception as exc:
         _logger.exception("Could not download or install llama.cpp.")
@@ -1072,11 +1027,22 @@ def _runtime_status_locked() -> dict[str, Any]:
     except (RuntimeError, ValueError) as exc:
         selection = None
         download_support_error = str(exc)
+    update_available = False
+    current_internal_executable: str | None = None
     if path_executable is not None:
         executable = path_executable
         llama_source = "path"
     elif selection is not None:
-        executable = _installed_llama_executable(selection)
+        current_internal_executable = _installed_llama_executable(selection)
+        older_install = (
+            _older_installed_llama_executable(selection)
+            if current_internal_executable is None
+            else None
+        )
+        executable = current_internal_executable or (
+            older_install[1] if older_install else None
+        )
+        update_available = older_install is not None
         llama_source = "internal" if executable is not None else None
     else:
         executable = None
@@ -1096,7 +1062,10 @@ def _runtime_status_locked() -> dict[str, Any]:
     with _download_lock:
         download_state = _download_state
         download_error = _download_error
-        if llama_source == "internal":
+        if current_internal_executable is not None and download_state not in {
+            "downloading",
+            "installing",
+        }:
             download_state = "installed"
             download_error = None
         download_target = _download_target or (
@@ -1118,6 +1087,7 @@ def _runtime_status_locked() -> dict[str, Any]:
         "llama_source": llama_source,
         "llama_path_executable": path_executable,
         "llama_version": llama_version,
+        "update_available": update_available,
         "download_supported": selection is not None,
         "download_support_error": download_support_error,
         "download_state": download_state,
@@ -1187,8 +1157,8 @@ def update_runtime_settings(
         return _runtime_status_locked()
 
 
-def restart_runtime() -> dict[str, Any]:
-    if not _restart_lock.acquire(blocking=False):
+def restart_runtime(*, wait: bool = False) -> dict[str, Any]:
+    if not _restart_lock.acquire(blocking=wait):
         with _lock:
             _observe_process_exit_locked()
             if not _auto_start:

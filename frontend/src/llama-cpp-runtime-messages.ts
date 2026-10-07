@@ -15,8 +15,12 @@ type RuntimeMessages = {
   restartFailureFallback: string
   pathAvailable: string
   internalInstallAvailable: string
+  internalUpdateAvailable: string
   pathUnavailable: string
   downloadButton: string
+  updateButton: string
+  updateTooltip: string
+  updateAvailable: string
   downloadStarting: string
   downloading: (target: string, progress: string) => string
   installing: (target: string) => string
@@ -48,8 +52,13 @@ const messages: Record<string, RuntimeMessages> = {
     restartFailureFallback: "The daemon did not pass its health check.",
     pathAvailable: "Available on PATH",
     internalInstallAvailable: "Unavailable (installable)",
+    internalUpdateAvailable: "Older internal install (update available)",
     pathUnavailable: "Unavailable on both PATH and internal",
     downloadButton: "Download llama.cpp",
+    updateButton: "Update llama.cpp",
+    updateTooltip:
+      "Install the pinned llama.cpp version and restart the internal daemon if enabled. Active requests may be interrupted.",
+    updateAvailable: "A pinned llama.cpp update is available.",
     downloadStarting: "Starting download…",
     downloading: (target, progress) => `Downloading ${target} (${progress})…`,
     installing: (target) => `Installing ${target}…`,
@@ -78,8 +87,13 @@ const messages: Record<string, RuntimeMessages> = {
     restartFailureFallback: "daemon이 헬스 체크를 통과하지 못했습니다.",
     pathAvailable: "PATH에서 사용 가능",
     internalInstallAvailable: "내부 설치본을 설치해 사용 가능",
+    internalUpdateAvailable: "내부 설치 버전이 오래되었습니다 (업데이트 가능)",
     pathUnavailable: "사용 불가",
     downloadButton: "llama.cpp 다운로드",
+    updateButton: "llama.cpp 업데이트",
+    updateTooltip:
+      "고정된 llama.cpp 버전을 설치하고, 활성화된 경우 내부 daemon을 재시작합니다. 실행 중인 요청이 중단될 수 있습니다.",
+    updateAvailable: "llama.cpp 고정 버전 업데이트를 사용할 수 있습니다.",
     downloadStarting: "다운로드 시작 중…",
     downloading: (target, progress) => `${target} 다운로드 중 (${progress})…`,
     installing: (target) => `${target} 설치 중…`,

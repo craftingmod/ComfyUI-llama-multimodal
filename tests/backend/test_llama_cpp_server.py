@@ -12,7 +12,7 @@ from backend.backends.llama_cpp_server import (
 )
 from backend.core import BackendError, MediaBundle
 from backend.core.media import MediaItem
-from backend.llama_cpp_session_cleanup import close_tracked_sessions
+from backend.llama_cpp.llama_cpp_session_cleanup import close_tracked_sessions
 
 
 def test_server_session_parses_models_generates_multimodal_and_retries_unload(
@@ -21,7 +21,7 @@ def test_server_session_parses_models_generates_multimodal_and_retries_unload(
     calls = []
     completion_payloads = []
     unload_attempts = 0
-    import backend.llama_cpp_session_cleanup as cleanup_module
+    import backend.llama_cpp.llama_cpp_session_cleanup as cleanup_module
 
     tracked = set()
     monkeypatch.setattr(cleanup_module, "_sessions", tracked)
@@ -397,7 +397,7 @@ def test_server_decide_rejects_all_zero_probability_choice_tokens():
 
 
 def test_owned_server_session_retries_shutdown_and_cleanup_idempotently(monkeypatch):
-    import backend.llama_cpp_session_cleanup as cleanup_module
+    import backend.llama_cpp.llama_cpp_session_cleanup as cleanup_module
 
     tracked = set()
     monkeypatch.setattr(cleanup_module, "_sessions", tracked)
@@ -460,7 +460,7 @@ def test_owned_server_session_retries_shutdown_and_cleanup_idempotently(monkeypa
 
 
 def test_owned_server_session_closes_at_prompt_end(monkeypatch):
-    import backend.llama_cpp_session_cleanup as cleanup_module
+    import backend.llama_cpp.llama_cpp_session_cleanup as cleanup_module
 
     tracked = set()
     monkeypatch.setattr(cleanup_module, "_sessions", tracked)

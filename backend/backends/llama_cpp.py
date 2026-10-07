@@ -13,7 +13,7 @@ from threading import RLock
 from typing import Any
 
 from ..core import BackendError, InputNormalizationError, MediaBundle
-from ..llama_cpp_session_cleanup import track_session, untrack_session
+from ..llama_cpp.llama_cpp_session_cleanup import track_session, untrack_session
 
 HANDLER_NAMES = (
     "auto",

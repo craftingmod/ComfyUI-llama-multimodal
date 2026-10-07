@@ -4,7 +4,7 @@
 
 ComfyUI 설정의 **llama.cpp Daemon** 영역에 `Restart internal daemon` 버튼을 추가한다. 버튼은 이 ComfyUI 프로세스가 소유한 supervisor와 `llama server`만 재시작한다. 연결된 외부 llama.cpp 서버와 `Llama.cpp Connect Session`에는 영향을 주지 않는다.
 
-현재 `backend/llama_cpp_runtime.py`가 `_lock` 아래에서 설정, supervisor 프로세스, 상태를 소유한다. 설정 변경 시 `_stop_locked()` 후 `_start_locked()`를 호출하고, `/ollama_image_list/llama_cpp/runtime`의 GET/POST가 상태 조회와 설정 변경을 처리한다. `frontend/src/llama-cpp-runtime-settings.ts`는 같은 경로로 요청하고 상태/오류를 설정 화면에 반영한다. `backend/llama_cpp_supervisor.py`가 소유 프로세스 종료를 맡는다. 이 경로를 그대로 재사용한다.
+현재 `backend/llama_cpp/llama_cpp_runtime.py`가 `_lock` 아래에서 설정, supervisor 프로세스, 상태를 소유한다. 설정 변경 시 `_stop_locked()` 후 `_start_locked()`를 호출하고, `/ollama_image_list/llama_cpp/runtime`의 GET/POST가 상태 조회와 설정 변경을 처리한다. `frontend/src/llama-cpp-runtime-settings.ts`는 같은 경로로 요청하고 상태/오류를 설정 화면에 반영한다. `backend/llama_cpp/llama_cpp_supervisor.py`가 소유 프로세스 종료를 맡는다. 이 경로를 그대로 재사용한다.
 
 ## 동작 계약
 
@@ -15,7 +15,7 @@ ComfyUI 설정의 **llama.cpp Daemon** 영역에 `Restart internal daemon` 버�
 
 ## 작업 순서와 담당 위치
 
-1. **백엔드 — `backend/llama_cpp_runtime.py`:** `restart_runtime()`을 추가해 기존 `_lock`, `_observe_process_exit_locked()`, `_stop_locked()`, `_start_locked()`, `_runtime_status_locked()`를 사용한다. 설정 저장 함수는 호출하지 않는다. 로컬 요청만 허용하는 `POST /ollama_image_list/llama_cpp/runtime/restart`를 등록하고, `auto_start=false`에는 명확한 409 응답을 준다. 실행은 기존 엔드포인트처럼 `asyncio.to_thread()`로 옮긴다. 재시작 결과는 기존 상태 JSON 형식으로 반환한다.
+1. **백엔드 — `backend/llama_cpp/llama_cpp_runtime.py`:** `restart_runtime()`을 추가해 기존 `_lock`, `_observe_process_exit_locked()`, `_stop_locked()`, `_start_locked()`, `_runtime_status_locked()`를 사용한다. 설정 저장 함수는 호출하지 않는다. 로컬 요청만 허용하는 `POST /ollama_image_list/llama_cpp/runtime/restart`를 등록하고, `auto_start=false`에는 명확한 409 응답을 준다. 실행은 기존 엔드포인트처럼 `asyncio.to_thread()`로 옮긴다. 재시작 결과는 기존 상태 JSON 형식으로 반환한다.
 2. **프런트엔드 — `frontend/src/llama-cpp-runtime-settings.ts`:** 현재 설치된 `@comfyorg/comfyui-frontend-types`의 설정 `type`이 custom renderer를 받으므로, 같은 **llama.cpp Daemon** 영역에 네이티브 `<button>`을 반환하는 설정 항목을 추가한다. 요청은 기존 `api.fetchApi`와 `settingUpdateQueue`를 사용해 설정 변경과 순서를 맞춘다. 진행 중 버튼을 비활성화하고 결과를 `updatePathStatus()`와 `showStartWarning()`에 전달한다. `auto_start`가 꺼졌을 때는 버튼 클릭을 막고 켜기 안내를 준다. 별도의 영구 설정 값은 만들지 않는다.
 3. **문구/문서 — `frontend/src/llama-cpp-runtime-messages.ts`, `docs/LLAMA_CPP.md`:** 한국어·영어 버튼 결과/안내 문구를 추가하고, 재시작 범위와 실행 중 요청 중단 가능성을 설명한다.
 4. **작은 회귀 체크 — 기존 테스트 위치:** 소유 프로세스 재시작, 실패 상태 재시도, `auto_start=false` 거부, 종료 실패 시 신규 시작 금지, 설정 미변경, 로컬 요청 제한을 확인한다. 프런트엔드는 중복 클릭과 상태/오류 반영만 확인한다. 필요한 체크만 추가한다.

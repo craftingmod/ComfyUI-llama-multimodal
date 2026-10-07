@@ -8,11 +8,11 @@ except (
     from comfy_api.latest import ComfyExtension, io
 from comfy_api.latest import Caching, ComfyAPI
 
-from .llama_cpp_runtime import (
+from .llama_cpp.llama_cpp_runtime import (
     initialize_llama_cpp_runtime,
     register_runtime_routes,
 )
-from .llama_cpp_session_cleanup import close_tracked_sessions
+from .llama_cpp.llama_cpp_session_cleanup import close_tracked_sessions
 from .nodes import (
     ClipImageListGenerateNode,
     JinjaChatTemplatePresetNode,

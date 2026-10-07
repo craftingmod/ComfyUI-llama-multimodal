@@ -197,9 +197,9 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
             self.closed = True
 
     tracked_session = TrackedSession()
-    importlib.import_module("backend.llama_cpp_session_cleanup").track_session(
-        tracked_session
-    )
+    importlib.import_module(
+        "backend.llama_cpp.llama_cpp_session_cleanup"
+    ).track_session(tracked_session)
     cleanup_provider.on_prompt_end("interrupted-prompt")
     assert tracked_session.closed is True
 

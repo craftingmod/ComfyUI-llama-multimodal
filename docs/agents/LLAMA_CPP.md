@@ -42,32 +42,34 @@ After adding files or changing `extra_model_paths.yaml`, restart ComfyUI or refr
 
 ## Optional local llama.cpp server
 
-The **Internal llama.cpp runtime activation** setting starts the `llama server` executable on `127.0.0.1`. A `llama` executable on ComfyUI's `PATH` takes priority; otherwise, the runtime uses a completed internal b11146 installation if one is available. ComfyUI starts a Python supervisor with its own interpreter; the supervisor owns the server process and watches a private lifetime pipe. It reports `running` only after `/health` returns `{"status":"ok"}`. Startup is bounded to 30 seconds.
+The **Internal llama.cpp runtime activation** setting starts the `llama server` executable on `127.0.0.1`. A `llama` executable on ComfyUI's `PATH` takes priority; otherwise, the runtime uses a completed internal b11429 installation if one is available. ComfyUI starts a Python supervisor with its own interpreter; the supervisor owns the server process and watches a private lifetime pipe. It reports `running` only after `/health` returns `{"status":"ok"}`. Startup is bounded to 30 seconds.
 
 ### Downloading the local runtime
 
-In ComfyUI Settings, open **Ollama-ImageList → llama.cpp Daemon** and use **Download llama.cpp** when no `llama` executable is available on `PATH`. The button is offered only for a supported environment without an existing internal installation. The downloader selects the release asset from the OS and CPU architecture of the ComfyUI process and, on Windows/Linux, the CUDA or ROCm backend reported by ComfyUI's own PyTorch. It checks the official b11146 asset digest before installation. It does not change the system `PATH` or install `llama-cpp-python`; this download is only for the optional local server in this section.
+In ComfyUI Settings, open **Ollama-ImageList → llama.cpp Daemon** and use **Download llama.cpp** when no `llama` executable is available on `PATH`. The button is offered only for a supported environment without an existing internal installation. The downloader selects the release asset from the OS and CPU architecture of the ComfyUI process and, on Windows/Linux, the CUDA or ROCm backend reported by ComfyUI's own PyTorch. It checks the official b11429 asset digest before installation. It does not change the system `PATH` or install `llama-cpp-python`; this download is only for the optional local server in this section.
 
-The files are stored under ComfyUI's protected system-user directory, returned by [`folder_paths.get_system_user_directory("llama_cpp")`](https://github.com/Comfy-Org/ComfyUI/blob/master/folder_paths.py): `<ComfyUI user directory>/__llama_cpp/artifacts/b11146/<os>-<arch>-<backend>/`. ComfyUI's configured user directory is used; the operating-system home directory is not. A successful install becomes the fallback executable when `PATH` has no `llama`. If internal runtime activation is already enabled, ComfyUI attempts to start the server after installation; otherwise enable **Internal llama.cpp runtime activation**.
+The files are stored under ComfyUI's protected system-user directory, returned by [`folder_paths.get_system_user_directory("llama_cpp")`](https://github.com/Comfy-Org/ComfyUI/blob/master/folder_paths.py): `<ComfyUI user directory>/__llama_cpp/artifacts/b11429/<os>-<arch>-<backend>/`. ComfyUI's configured user directory is used; the operating-system home directory is not. A successful install becomes the fallback executable when `PATH` has no `llama`. If internal runtime activation is already enabled, ComfyUI attempts to start the server after installation; otherwise enable **Internal llama.cpp runtime activation**.
 
-The b11146 downloader supports these release combinations. The linked [official release](https://github.com/ggml-org/llama.cpp/releases/tag/b11146) lists these assets; its [build attestation](https://github.com/ggml-org/llama.cpp/attestations/49623059) provides the digests used for verification.
+When an older internal release is installed, the **Install** setting offers **Update llama.cpp**. It installs the pinned b11429 release and restarts the internal daemon after installation when activation is enabled; active requests may be interrupted.
+
+The b11429 downloader supports these release combinations. The linked [official release](https://github.com/ggml-org/llama.cpp/releases/tag/b11429) lists these assets; its [build attestation](https://github.com/ggml-org/llama.cpp/attestations/52904614) provides the digests used for verification.
 
 | ComfyUI environment | llama.cpp asset | Additional asset |
 | --- | --- | --- |
-| Windows x64 CPU | `llama-b11146-bin-win-cpu-x64.zip` | — |
-| Windows arm64 CPU | `llama-b11146-bin-win-cpu-arm64.zip` | — |
-| Windows x64 CUDA | `llama-b11146-bin-win-cuda-13.4-x64.zip` | `cudart-llama-bin-win-cuda-13.4-x64.zip` |
-| Windows arm64 CUDA | `llama-b11146-bin-win-cuda-13.4-arm64.zip` | `cudart-llama-bin-win-cuda-13.4-arm64.zip` |
-| Windows x64 ROCm | `llama-b11146-bin-win-rocm-10.0-x64.zip` | — |
-| macOS x64 | `llama-b11146-bin-macos-x64.tar.gz` | — |
-| macOS arm64 | `llama-b11146-bin-macos-arm64.tar.gz` | — |
-| Linux x64 CPU | `llama-b11146-bin-ubuntu-x64.tar.gz` | — |
-| Linux arm64 CPU | `llama-b11146-bin-ubuntu-arm64.tar.gz` | — |
-| Linux x64 CUDA | `llama-b11146-bin-ubuntu-cuda-13.4-x64.tar.gz` | `cudart-llama-b11146-bin-ubuntu-cuda-13.4-x64.tar.gz` |
-| Linux arm64 CUDA | `llama-b11146-bin-ubuntu-cuda-13.4-arm64.tar.gz` | `cudart-llama-b11146-bin-ubuntu-cuda-13.4-arm64.tar.gz` |
-| Linux x64 ROCm | `llama-b11146-bin-ubuntu-rocm-10.0-x64.tar.gz` | — |
+| Windows x64 CPU | `llama-b11429-bin-win-cpu-x64.zip` | — |
+| Windows arm64 CPU | `llama-b11429-bin-win-cpu-arm64.zip` | — |
+| Windows x64 CUDA | `llama-b11429-bin-win-cuda-13.4-x64.zip` | `cudart-llama-bin-win-cuda-13.4-x64.zip` |
+| Windows arm64 CUDA | `llama-b11429-bin-win-cuda-13.4-arm64.zip` | `cudart-llama-bin-win-cuda-13.4-arm64.zip` |
+| Windows x64 ROCm | `llama-b11429-bin-win-rocm-10.0-x64.zip` | — |
+| macOS x64 | `llama-b11429-bin-macos-x64.tar.gz` | — |
+| macOS arm64 | `llama-b11429-bin-macos-arm64.tar.gz` | — |
+| Linux x64 CPU | `llama-b11429-bin-ubuntu-x64.tar.gz` | — |
+| Linux arm64 CPU | `llama-b11429-bin-ubuntu-arm64.tar.gz` | — |
+| Linux x64 CUDA | `llama-b11429-bin-ubuntu-cuda-13.4-x64.tar.gz` | `cudart-llama-b11429-bin-ubuntu-cuda-13.4-x64.tar.gz` |
+| Linux arm64 CUDA | `llama-b11429-bin-ubuntu-cuda-13.4-arm64.tar.gz` | `cudart-llama-b11429-bin-ubuntu-cuda-13.4-arm64.tar.gz` |
+| Linux x64 ROCm | `llama-b11429-bin-ubuntu-rocm-10.0-x64.tar.gz` | — |
 
-Backend selection checks `torch.version.hip`, then `torch.version.cuda`, then CPU. macOS selects its OS/architecture asset regardless of PyTorch MPS. Unsupported combinations are rejected instead of silently falling back to CPU; for example, b11146 has no Windows arm64 or Linux arm64 ROCm asset. Linux packages are built for Ubuntu, so compatibility with other distributions is not guaranteed.
+Backend selection checks `torch.version.hip`, then `torch.version.cuda`, then CPU. macOS selects its OS/architecture asset regardless of PyTorch MPS. Unsupported combinations are rejected instead of silently falling back to CPU; for example, b11429 has no Windows arm64 or Linux arm64 ROCm asset. Linux packages are built for Ubuntu, so compatibility with other distributions is not guaranteed.
 
 CUDA assets target CUDA 13.4 and include a companion `cudart` runtime archive. They do not install an NVIDIA driver. A CUDA-capable GPU and compatible NVIDIA driver are still required; NVIDIA lists driver 580 as the CUDA 13.x minor-version-compatibility baseline, while CUDA 13.4 features or newly enabled platforms may require the R615 driver branch or later. See the [NVIDIA CUDA release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/) for current details.
 

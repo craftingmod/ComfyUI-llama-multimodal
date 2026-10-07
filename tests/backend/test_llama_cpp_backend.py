@@ -20,7 +20,7 @@ from backend.core import (
     normalize_media,
     normalize_video,
 )
-from backend.llama_cpp_session_cleanup import close_tracked_sessions
+from backend.llama_cpp.llama_cpp_session_cleanup import close_tracked_sessions
 from tests.backend.tensor_stub import VideoInputStub, silent_audio, solid_image
 
 NATIVE_EVENTS = []

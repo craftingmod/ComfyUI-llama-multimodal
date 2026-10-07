@@ -14,7 +14,7 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from ..core import BackendError, InputNormalizationError, MediaBundle
-from ..llama_cpp_session_cleanup import track_session, untrack_session
+from ..llama_cpp.llama_cpp_session_cleanup import track_session, untrack_session
 from .llama_cpp import (
     LlamaCppDecisionResult,
     LlamaCppResult,

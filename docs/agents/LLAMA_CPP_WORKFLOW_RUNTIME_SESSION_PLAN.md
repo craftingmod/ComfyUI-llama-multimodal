@@ -41,7 +41,7 @@
 
 ## 작업 순서와 담당 위치
 
-1. **실행 경로 — `backend/llama_cpp_runtime.py`, `backend/llama_cpp_supervisor.py`:** 실행 파일 탐색, 자식 환경, supervisor 시작과 준비/종료 로직 중 재사용할 부분을 작은 함수로 분리한다. 상시 daemon 설정과 전역 상태의 소유권은 유지한다. 임시 서버는 단일 모델 명령과 독립 포트를 사용한다.
+1. **실행 경로 — `backend/llama_cpp/llama_cpp_runtime.py`, `backend/llama_cpp/llama_cpp_supervisor.py`:** 실행 파일 탐색, 자식 환경, supervisor 시작과 준비/종료 로직 중 재사용할 부분을 작은 함수로 분리한다. 상시 daemon 설정과 전역 상태의 소유권은 유지한다. 임시 서버는 단일 모델 명령과 독립 포트를 사용한다.
 2. **입력 변환 — `backend/nodes/llama_cpp_compact.py` 및 새 서버 Session 코드:** 기존 프로필 정규화와 GGUF 경로 확인을 사용해 위 표의 서버 명령을 만든다. 현재 `build_compact_session_kwargs()`에는 Python native speculative 의존성 확인이 있으므로 새 노드에서 통째로 호출하지 않는다. 명시적으로 무시하는 두 필드만 제외하고 잘못된 경로·상충하는 입력은 시작 전에 오류로 처리한다.
 3. **세션 수명 — `backend/backends/llama_cpp_server.py`, `backend/nodes/llama_cpp_session.py`:** 기존 HTTP 생성 어댑터를 쓰는 소유형 핸들과 새 Create 노드를 추가한다. 기존 Generate/Unload의 세션 타입 검사를 새 핸들까지 확장하고 기존 prompt-end 추적을 재사용한다. 외부 Connect의 close 동작은 분리해 보존한다.
 4. **등록과 문서 — `backend/extension.py`, `backend/nodes/__init__.py`, `docs/LLAMA_CPP.md`:** 새 노드만 추가 등록하고, PATH/Internal 실행 파일 우선순위, 임시 포트, 프로필 변환과 무시되는 두 필드, Unload/중단 시 종료 순서를 설명한다.

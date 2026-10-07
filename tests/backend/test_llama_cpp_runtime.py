@@ -6,7 +6,7 @@ import zipfile
 
 import pytest
 
-import backend.llama_cpp_runtime as runtime
+import backend.llama_cpp.llama_cpp_runtime as runtime
 
 
 class FakeProcess:
@@ -260,13 +260,13 @@ def test_restart_endpoint_requires_local_request_and_enabled_runtime(monkeypatch
 def test_release_asset_selection_uses_fixed_platform_backend_mapping():
     windows_cuda = runtime._select_release_asset("win32", "AMD64", "cuda")
     assert windows_cuda["directory"] == "windows-x64-cuda"
-    assert windows_cuda["assets"][0][0] == "llama-b11146-bin-win-cuda-13.4-x64.zip"
+    assert windows_cuda["assets"][0][0] == "llama-b11429-bin-win-cuda-13.4-x64.zip"
     assert windows_cuda["assets"][1][0] == "cudart-llama-bin-win-cuda-13.4-x64.zip"
 
     macos = runtime._select_release_asset("darwin", "arm64", "cuda")
-    assert macos["assets"][0][0] == "llama-b11146-bin-macos-arm64.tar.gz"
+    assert macos["assets"][0][0] == "llama-b11429-bin-macos-arm64.tar.gz"
 
-    with pytest.raises(ValueError, match="No b11146 llama.cpp build"):
+    with pytest.raises(ValueError, match="No b11429 llama.cpp build"):
         runtime._select_release_asset("linux", "aarch64", "rocm")
 
 
@@ -309,7 +309,7 @@ def test_runtime_status_recognizes_persisted_install_after_restart(
     monkeypatch.setattr(
         runtime, "_model_directory_options", lambda: ([model_dir], model_dir)
     )
-    monkeypatch.setattr(runtime, "_probe_llama_version", lambda _path: "b11146")
+    monkeypatch.setattr(runtime, "_probe_llama_version", lambda _path: "b11429")
     monkeypatch.setattr(runtime, "_download_state", "error")
     monkeypatch.setattr(runtime, "_download_error", "stale download error")
     monkeypatch.setattr(runtime, "_process", None)
@@ -342,7 +342,7 @@ def test_download_asset_rejects_sha256_mismatch(monkeypatch, tmp_path):
             return None
 
         def geturl(self):
-            return "https://github.com/ggml-org/llama.cpp/releases/download/b11146/test.zip"
+            return "https://github.com/ggml-org/llama.cpp/releases/download/b11429/test.zip"
 
         def read(self, size):
             return self._stream.read(size)

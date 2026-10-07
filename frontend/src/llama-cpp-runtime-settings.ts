@@ -6,6 +6,7 @@ import { getRuntimeMessages } from "./llama-cpp-runtime-messages.ts"
 const RUNTIME_ROUTE = "/ollama_image_list/llama_cpp/runtime"
 const RUNTIME_RESTART_ROUTE = `${RUNTIME_ROUTE}/restart`
 const RUNTIME_DOWNLOAD_ROUTE = `${RUNTIME_ROUTE}/download`
+const SETTINGS_PROJECT_NAME = "llama-multimodal"
 const COMFY_LOCALE_SETTING = "Comfy.Locale"
 const AUTO_START_SETTING = "OllamaImageList.LlamaCpp.AutoStart"
 const RESTART_SETTING = "OllamaImageList.LlamaCpp.Restart"
@@ -56,6 +57,7 @@ type RuntimeStatus = {
   download_bytes_received: number
   download_bytes_total: number | null
   download_error: string | null
+  update_available?: boolean
 }
 
 const syncingSettings = new Map<string, number>()
@@ -75,6 +77,7 @@ let downloadView:
   | {
       app: ComfyApp
       button: HTMLButtonElement
+      updateButton: HTMLButtonElement
       progress: HTMLProgressElement
       message: HTMLElement
     }
@@ -108,11 +111,13 @@ async function updatePathStatus(app: ComfyApp, status: RuntimeStatus): Promise<v
   app.extensionManager.setting.set(SERVICE_STATE_SETTING, status.state)
   app.extensionManager.setting.set(
     PATH_STATUS_SETTING,
-    status.llama_source === "path"
-      ? messages.pathAvailable
-      : status.llama_source === "internal"
-        ? messages.internalInstallAvailable
-        : messages.pathUnavailable,
+    status.update_available
+      ? messages.internalUpdateAvailable
+      : status.llama_source === "path"
+        ? messages.pathAvailable
+        : status.llama_source === "internal"
+          ? messages.internalInstallAvailable
+          : messages.pathUnavailable,
   )
   app.extensionManager.setting.set(EXECUTABLE_PATH_SETTING, status.llama_executable ?? "—")
   app.extensionManager.setting.set(LLAMA_VERSION_SETTING, status.llama_version ?? "—")
@@ -139,7 +144,7 @@ function formatBytes(bytes: number): string {
 
 function renderDownloadView(): void {
   if (!downloadView) return
-  const { app, button, progress, message } = downloadView
+  const { app, button, updateButton, progress, message } = downloadView
   const status = latestStatus
   const messages = getRuntimeMessages(
     app.extensionManager.setting.get<string>(COMFY_LOCALE_SETTING),
@@ -147,6 +152,7 @@ function renderDownloadView(): void {
   const state = status?.download_state
   const active = downloadInProgress || (state !== undefined && isDownloadActive(state))
   const installed = state === "installed"
+  const updateAvailable = status?.update_available === true
   const target = status?.download_target ?? "llama.cpp"
   progress.setAttribute("aria-label", messages.downloadProgressLabel)
 
@@ -162,8 +168,17 @@ function renderDownloadView(): void {
           )
         : messages.downloadStarting
     : messages.downloadButton
+  updateButton.textContent = active ? button.textContent : messages.updateButton
+  button.hidden = updateAvailable
+  updateButton.hidden = !updateAvailable
+  updateButton.title = messages.updateTooltip
   button.disabled =
-    !status || status.llama_available || !status.download_supported || installed || active
+    !status ||
+    status.llama_available ||
+    !status.download_supported ||
+    (installed && !updateAvailable) ||
+    active
+  updateButton.disabled = !status || !updateAvailable || !status.download_supported || active
 
   progress.hidden = state !== "downloading"
   if (state === "downloading" && status) {
@@ -186,10 +201,12 @@ function renderDownloadView(): void {
     )
   } else if (state === "installing") {
     message.textContent = messages.installing(target)
-  } else if (state === "installed") {
-    message.textContent = messages.installed(target)
   } else if (state === "error") {
     message.textContent = messages.downloadFailed(status?.download_error ?? messages.unknownError)
+  } else if (updateAvailable) {
+    message.textContent = messages.updateAvailable
+  } else if (state === "installed") {
+    message.textContent = messages.installed(target)
   } else if (status && !status.llama_available && !status.download_supported) {
     message.textContent = status.download_support_error ?? messages.downloadUnsupported
   } else {
@@ -239,11 +256,12 @@ async function refreshDownloadStatus(
 }
 
 async function startDownload(app: ComfyApp, api: ComfyApi): Promise<void> {
+  const updateAvailable = latestStatus?.update_available === true
   if (
     downloadInProgress ||
     !latestStatus ||
-    latestStatus.llama_available ||
-    latestStatus.download_state === "installed" ||
+    (latestStatus.llama_available && !updateAvailable) ||
+    (latestStatus.download_state === "installed" && !updateAvailable) ||
     !latestStatus.download_supported
   )
     return
@@ -285,14 +303,17 @@ function createDownloadControl(app: ComfyApp, api: ComfyApi): HTMLElement {
   const button = document.createElement("button")
   button.type = "button"
   button.addEventListener("click", () => void startDownload(app, api))
+  const updateButton = document.createElement("button")
+  updateButton.type = "button"
+  updateButton.addEventListener("click", () => void startDownload(app, api))
   const progress = document.createElement("progress")
   progress.setAttribute("aria-label", "llama.cpp download progress")
   progress.hidden = true
   const message = document.createElement("div")
   message.setAttribute("role", "status")
   message.setAttribute("aria-live", "polite")
-  wrapper.append(message, progress, button)
-  downloadView = { app, button, progress, message }
+  wrapper.append(message, progress, button, updateButton)
+  downloadView = { app, button, updateButton, progress, message }
   renderDownloadView()
   void refreshDownloadStatus(app, api)
   return wrapper
@@ -405,6 +426,7 @@ async function requestStatus(
     (typeof payload.llama_executable !== "string" && payload.llama_executable !== null) ||
     !("llama_version" in payload) ||
     (typeof payload.llama_version !== "string" && payload.llama_version !== null) ||
+    ("update_available" in payload && typeof payload.update_available !== "boolean") ||
     !("running" in payload) ||
     typeof payload.running !== "boolean" ||
     !("error" in payload) ||
@@ -517,7 +539,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
     settings: [
       {
         id: AUTO_START_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "AutoStart"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "AutoStart"],
         name: "Internal llama.cpp runtime activation",
         tooltip:
           "Starts the PATH llama executable on 127.0.0.1 now and on each ComfyUI startup. Settings changes restart the owned service; closing ComfyUI stops it.",
@@ -566,7 +588,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: SERVICE_STATE_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "LifecycleStatus"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "LifecycleStatus"],
         name: "Internal service state",
         tooltip: "Lifecycle state of the service owned by this ComfyUI process.",
         type: "text",
@@ -577,7 +599,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: SERVER_LINK_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "ServerLink"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "ServerLink"],
         name: "Internal server address (Beta)",
         tooltip:
           "Opens the running llama.cpp server in a new tab. This 127.0.0.1 link works from a browser on the same machine as ComfyUI.",
@@ -588,9 +610,9 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: "OllamaImageList.LlamaCpp.Download" as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "DownloadActor"],
-        name: "Download llama.cpp",
-        tooltip: "Download and install the supported llama.cpp build for this runtime.",
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "Install"],
+        name: "Install llama.cpp",
+        tooltip: "Download the pinned llama.cpp build or update an older internal installation.",
         type: () => createDownloadControl(app, api),
         defaultValue: null,
         sortOrder: 95,
@@ -598,7 +620,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: PATH_STATUS_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "PathStatus"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "PathStatus"],
         name: "llama executable availability",
         tooltip: "Shows whether llama is available on PATH or provided by the internal install.",
         type: "text",
@@ -611,7 +633,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: EXECUTABLE_PATH_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "ExecutablePath"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "ExecutablePath"],
         name: "llama executable path",
         tooltip: "The resolved executable path when llama is available.",
         type: "text",
@@ -622,7 +644,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: LLAMA_VERSION_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "Version"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "Version"],
         name: "llama version",
         tooltip: "The version reported by llama --version.",
         type: "text",
@@ -633,7 +655,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: RESTART_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon", "RestartActor"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon", "RestartActor"],
         name: "Restart internal daemon",
         tooltip: getRuntimeMessages(app.extensionManager.setting.get<string>(COMFY_LOCALE_SETTING))
           .restartTooltip,
@@ -644,7 +666,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: CTX_SIZE_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon Config", "ContextSize"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon Config", "ContextSize"],
         name: "Context size",
         tooltip:
           "Changing this while the internal server is running restarts it with the new context size.",
@@ -706,7 +728,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: PORT_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon Config", "Port"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon Config", "Port"],
         name: "Internal server port",
         tooltip: "Changing this while the internal server is running restarts it on the new port.",
         type: "number",
@@ -766,7 +788,7 @@ export function registerLlamaCppRuntimeSettings(app: ComfyApp, api: ComfyApi): v
       },
       {
         id: MODEL_DIR_SETTING as any,
-        category: [PROJECT_NAME, "llama.cpp Daemon Config", "ModelDir"],
+        category: [SETTINGS_PROJECT_NAME, "llama.cpp Daemon Config", "ModelDir"],
         name: "LLM models directory",
         tooltip:
           "Changing this while the internal server is running restarts it with the new models directory.",
