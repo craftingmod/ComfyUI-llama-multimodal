@@ -4,7 +4,12 @@ import Path from "node:path"
 import { $ } from "bun"
 import { zipSync } from "fflate"
 
-import { getProjectVersion, projectArchiveName, registryVersionSource } from "./project-version.ts"
+import {
+  getProjectVersion,
+  packagedPyproject,
+  projectArchiveName,
+  registryVersionSource,
+} from "./project-version.ts"
 
 type ComfyConfig = {
   tool?: { comfy?: { DisplayName?: unknown; includes?: unknown } }
@@ -112,6 +117,10 @@ for (const relativePath of [...files].sort()) {
 if (!("__init__.py" in archiveFiles) || !("pyproject.toml" in archiveFiles)) {
   throw new Error("Package must contain __init__.py and pyproject.toml")
 }
+
+archiveFiles["pyproject.toml"] = new TextEncoder().encode(
+  packagedPyproject(new TextDecoder().decode(archiveFiles["pyproject.toml"]), version),
+)
 
 const zip = zipSync(archiveFiles, {
   level: 9,

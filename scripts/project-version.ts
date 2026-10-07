@@ -16,6 +16,22 @@ export function registryVersionSource(version: string): string {
   return `__version__ = "${version}"\n`
 }
 
+export function packagedPyproject(source: string, version: string): string {
+  registryVersionSource(version)
+  const metadata = Bun.TOML.parse(source) as {
+    project: { version?: string; dynamic?: string[] }
+  }
+  const project = metadata.project
+  project.version = version
+  if (project.dynamic) {
+    project.dynamic = project.dynamic.filter((field) => field !== "version")
+    if (project.dynamic.length === 0) delete project.dynamic
+  }
+  const packaged = Bun.TOML.stringify(metadata)
+  if (!packaged) throw new Error("Failed to serialize packaged pyproject.toml")
+  return packaged
+}
+
 export function projectArchiveName(displayName: unknown, version: string): string {
   if (typeof displayName !== "string" || !displayName.trim()) {
     throw new Error("Expected tool.comfy.DisplayName to be a non-empty string in pyproject.toml")
