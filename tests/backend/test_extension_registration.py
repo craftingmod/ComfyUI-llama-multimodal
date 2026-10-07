@@ -228,7 +228,13 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
         "LlamaCppMtmd_CreateRuntimeSession",
         "LlamaCppMtmd_ConnectSession",
         "LlamaCppMtmd_CreateQuestionFromInput",
+        "LlamaCppMtmd_BuildQuestion",
+        "LlamaCppMtmd_BuildNoul",
         "LlamaCppMtmd_Decide",
+        "LlamaCppMtmd_DecideSystemOne",
+        "LlamaCppMtmd_DecideSystemOneMediaSequential",
+        "LlamaCppMtmd_DecideSystemOnePromptSequential",
+        "LlamaCppMtmd_ExtractAnswer",
         "LlamaCppMtmd_DecideMediaSequential",
         "LlamaCppMtmd_DecidePromptSequential",
         "LlamaCppMtmd_Generate",
@@ -264,10 +270,16 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
         "[llama.cpp] Create Native Session",
         "[llama.cpp] Create Runtime Session",
         "[llama.cpp] Connect Session",
-        "[llama.cpp] Create Question From Input",
-        "[llama.cpp] Decide",
-        "[llama.cpp] Decide (Media Sequential)",
-        "[llama.cpp] Decide (Prompt Sequential)",
+        "[llama.cpp] Build Question (Prefill)",
+        "[llama.cpp] Build Question",
+        "[llama.cpp] Build Noul",
+        "[llama.cpp] Prefill Decide",
+        "[llama.cpp] System One Decide",
+        "[llama.cpp] System One Decide (Media Sequential)",
+        "[llama.cpp] System One Decide (Prompt Sequential)",
+        "[llama.cpp] Extract Answer",
+        "[llama.cpp] Prefill Decide (Media Sequential)",
+        "[llama.cpp] Prefill Decide (Prompt Sequential)",
         "[llama.cpp] Generate",
         "[llama.cpp] Unload Session",
         "[llama.cpp] Generate",
@@ -301,10 +313,16 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
         "llama_cpp/session",
         "llama_cpp/session",
         "llama_cpp/session",
+        "llama_cpp/decision/prefill",
+        "llama_cpp/decision/system_one",
+        "llama_cpp/decision/system_one",
+        "llama_cpp/decision/prefill",
+        "llama_cpp/decision/system_one",
+        "llama_cpp/decision/system_one",
+        "llama_cpp/decision/system_one",
         "llama_cpp/decision",
-        "llama_cpp/decision",
-        "llama_cpp/decision",
-        "llama_cpp/decision",
+        "llama_cpp/decision/prefill",
+        "llama_cpp/decision/prefill",
         "llama_cpp/generate",
         "llama_cpp/session",
         "llama_cpp/compact",
@@ -1262,6 +1280,23 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
     assert create_question_input_schema.outputs[0].data_type == (
         "OLLAMA_IMAGE_LIST_LLAMA_CPP_QUESTION"
     )
+    _, build_question_schema = registered["LlamaCppMtmd_BuildQuestion"]
+    assert build_question_schema.is_input_list is True
+    assert [field.name for field in build_question_schema.inputs] == [
+        "question",
+        "answer",
+        "type",
+    ]
+    assert build_question_schema.inputs[-1].options["options"] == ["choice", "score"]
+    assert build_question_schema.inputs[-1].options["default"] == "choice"
+    assert build_question_schema.outputs[0].data_type == (
+        "OLLAMA_IMAGE_LIST_LLAMA_CPP_QUESTION"
+    )
+    _, build_noul_schema = registered["LlamaCppMtmd_BuildNoul"]
+    assert [field.name for field in build_noul_schema.inputs] == ["question"]
+    assert build_noul_schema.outputs[0].data_type == (
+        "OLLAMA_IMAGE_LIST_LLAMA_CPP_QUESTION"
+    )
     _, decide_schema = registered["LlamaCppMtmd_Decide"]
     assert decide_schema.is_input_list is True
     assert [field.name for field in decide_schema.inputs] == [
@@ -1296,6 +1331,42 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
     assert decide_schema.outputs[-1].data_type == (
         "OLLAMA_IMAGE_LIST_LLAMA_CPP_SESSION"
     )
+    _, systemone_schema = registered["LlamaCppMtmd_DecideSystemOne"]
+    assert systemone_schema.not_idempotent is True
+    assert [field.name for field in systemone_schema.inputs] == [
+        "session",
+        "system",
+        "context",
+        "question",
+        "images",
+        "session_unload",
+    ]
+    assert [field.name for field in systemone_schema.outputs] == [
+        "answer",
+        "metrics_json",
+        "media_diagnostics",
+        "session",
+    ]
+    assert systemone_schema.outputs[0].data_type == (
+        "OLLAMA_IMAGE_LIST_LLAMA_CPP_ANSWER"
+    )
+    assert systemone_schema.outputs[-1].data_type == (
+        "OLLAMA_IMAGE_LIST_LLAMA_CPP_SESSION"
+    )
+    _, extract_answer_schema = registered["LlamaCppMtmd_ExtractAnswer"]
+    assert [field.name for field in extract_answer_schema.inputs] == ["answer"]
+    assert [field.name for field in extract_answer_schema.outputs] == [
+        "selected",
+        "value",
+        "probabilities",
+        "result_json",
+    ]
+    assert extract_answer_schema.inputs[0].data_type == (
+        "OLLAMA_IMAGE_LIST_LLAMA_CPP_ANSWER"
+    )
+    assert extract_answer_schema.outputs[1].data_type == "float"
+    assert extract_answer_schema.outputs[2].data_type == "float"
+    assert extract_answer_schema.outputs[2].options["is_output_list"] is True
     _, decide_media_schema = registered["LlamaCppMtmd_DecideMediaSequential"]
     assert decide_media_schema.is_input_list is True
     assert decide_media_schema.not_idempotent is True

@@ -6,6 +6,7 @@ import math
 import re
 import socket
 import time
+from collections.abc import Mapping
 from threading import Lock
 from typing import Any, Callable, Protocol
 from urllib.error import HTTPError, URLError
@@ -225,6 +226,153 @@ def _build_messages(
         content.append(prompt_part)
     messages.append({"role": "user", "content": content})
     return messages
+
+
+def _systemone_probability_values(
+    value: Any, expected_keys: list[str], label: str
+) -> list[float]:
+    if not isinstance(value, dict) or set(value) != set(expected_keys):
+        raise BackendError(
+            f"System One {label} must contain exactly the expected keys."
+        )
+    values: list[float] = []
+    for key in expected_keys:
+        probability = value[key]
+        if (
+            isinstance(probability, bool)
+            or not isinstance(probability, (int, float))
+            or not 0.0 <= probability <= 1.0
+        ):
+            raise BackendError(
+                f"System One {label} values must be finite probabilities."
+            )
+        values.append(float(probability))
+    if not math.isclose(math.fsum(values), 1.0, rel_tol=0.0, abs_tol=1e-6):
+        raise BackendError(f"System One {label} probabilities must sum to 1.")
+    return values
+
+
+def normalize_systemone_question(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise InputNormalizationError(
+            "question must be a System One question object."
+        )
+    fields = set(value)
+    if fields == {"question", "answer"}:
+        question_type = "choice"
+    else:
+        question_type = value.get("type")
+        expected_fields = (
+            {"type", "question"}
+            if question_type == "noul"
+            else {"type", "question", "answer"}
+        )
+        if (
+            not isinstance(question_type, str)
+            or question_type not in {"choice", "score", "noul"}
+            or fields != expected_fields
+        ):
+            raise InputNormalizationError(
+                "question is not a valid System One payload."
+            )
+
+    instructions = value.get("question")
+    if not isinstance(instructions, str) or not instructions.strip():
+        raise InputNormalizationError("question must be a non-empty string.")
+    if question_type == "noul":
+        return {"type": "noul", "question": instructions}
+
+    answers = value.get("answer")
+    maximum = 26 if question_type == "choice" else 10
+    if (
+        not isinstance(answers, (list, tuple))
+        or not 2 <= len(answers) <= maximum
+    ):
+        label = "answers" if question_type == "choice" else "score levels"
+        raise InputNormalizationError(
+            f"{label} must contain between 2 and {maximum} values."
+        )
+    if any(
+        not isinstance(answer, str) or not answer.strip() for answer in answers
+    ):
+        raise InputNormalizationError("answer values must be non-empty strings.")
+    if len(set(answers)) != len(answers):
+        raise InputNormalizationError("answer values must be unique.")
+    return {
+        "type": question_type,
+        "question": instructions,
+        "answer": list(answers),
+    }
+
+
+def _systemone_answer_payload(
+    answer: Any, question: Mapping[str, Any]
+) -> dict[str, Any]:
+    question_type = question["type"]
+    if not isinstance(answer, dict) or answer.get("type") != question_type:
+        raise BackendError(
+            "System One response answer has an invalid or mismatched type."
+        )
+
+    if question_type == "choice":
+        options = list(question["criteria"])
+        probabilities = _systemone_probability_values(
+            answer.get("probabilities"), options, "choice probabilities"
+        )
+        selected = answer.get("choice")
+        if not isinstance(selected, str) or selected not in options:
+            raise BackendError("System One response selected an unknown choice.")
+        value = probabilities[options.index(selected)]
+    elif question_type == "score":
+        levels = question["criteria"]
+        keys = [str(index) for index in range(len(levels))]
+        probabilities = _systemone_probability_values(
+            answer.get("probabilities"), keys, "score probabilities"
+        )
+        legend = answer.get("legend")
+        if (
+            not isinstance(legend, dict)
+            or set(legend) != set(keys)
+            or any(
+                legend[key] != level
+                for key, level in zip(keys, levels, strict=True)
+            )
+        ):
+            raise BackendError(
+                "System One response score legend does not match its levels."
+            )
+        value = answer.get("score")
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not 0.0 <= value <= len(levels) - 1
+        ):
+            raise BackendError(
+                "System One response score is outside its level range."
+            )
+        value = float(value)
+        selected = ""
+    else:
+        value = answer.get("noul")
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not 0.0 <= value <= 1.0
+        ):
+            raise BackendError(
+                "System One response noul value must be a finite probability."
+            )
+        value = float(value)
+        probabilities = [1.0 - value, value]
+        selected = ""
+
+    return {
+        "type": question_type,
+        "selected": selected,
+        "value": value,
+        "probabilities": list(probabilities),
+        "result": dict(answer),
+    }
 
 
 class LlamaCppServerSession:
@@ -750,6 +898,129 @@ class LlamaCppServerSession:
             raise
         except Exception as exc:
             raise BackendError(f"llama.cpp server decision failed: {exc}") from exc
+
+    def systemone(
+        self,
+        *,
+        state: str,
+        question: Mapping[str, Any],
+        media: MediaBundle | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        if self._closed:
+            raise BackendError(
+                "The llama.cpp server session has already been unloaded."
+            )
+        if not isinstance(state, str):
+            raise InputNormalizationError("state must be a string.")
+        question = normalize_systemone_question(question)
+        media = MediaBundle() if media is None else media
+        if not isinstance(media, MediaBundle) or any(
+            item.kind != "image" for item in media.items
+        ):
+            raise InputNormalizationError("System One accepts images only.")
+
+        question_type = question.get("type")
+        instructions = question["question"]
+        if question_type == "choice":
+            request_question = {
+                "type": question_type,
+                "instructions": instructions,
+                "criteria": {answer: None for answer in question["answer"]},
+            }
+        elif question_type == "score":
+            request_question = {
+                "type": question_type,
+                "instructions": instructions,
+                "criteria": list(question["answer"]),
+            }
+        elif question_type == "noul":
+            request_question = {"type": question_type, "instructions": instructions}
+        else:
+            raise InputNormalizationError("System One question type is unsupported.")
+
+        request: dict[str, Any] = {
+            "model": self.model,
+            "state": state,
+            "questions": {"question": request_question},
+        }
+        if media.items:
+            request["images"] = [
+                _data_uri(item.mime_type, item.payload) for item in media.items
+            ]
+        started = time.perf_counter()
+        response_body = _request(
+            url=_endpoint_url(self.url, "/v1/systemone"),
+            method="POST",
+            body=json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode(
+                "utf-8"
+            ),
+            timeout_seconds=_REQUEST_TIMEOUT_SECONDS,
+            api_key=self._api_key,
+            transport=self._transport,
+        )
+        elapsed = time.perf_counter() - started
+        try:
+            response = json.loads(response_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BackendError(
+                "llama.cpp server returned invalid System One JSON."
+            ) from exc
+        if not isinstance(response, dict):
+            raise BackendError(
+                "llama.cpp server returned a non-object System One response."
+            )
+        answers = response.get("answers")
+        if not isinstance(answers, dict) or not isinstance(
+            answers.get("question"), dict
+        ):
+            raise BackendError(
+                "llama.cpp System One response is missing answers.question."
+            )
+        answer_payload = _systemone_answer_payload(
+            answers["question"], request_question
+        )
+
+        execution_index = self._execution_count
+        self._execution_count += 1
+        manifest = media.manifest()
+        has_media = bool(media.items)
+        metrics = {
+            "operation": "systemone",
+            "model": self.model,
+            "decision_seconds": elapsed,
+            "usage": dict(response.get("usage", {}))
+            if isinstance(response.get("usage"), dict)
+            else {},
+            "model_unloaded": False,
+            "session": {
+                "execution_index": execution_index,
+                "model_reused": execution_index > 0,
+                "unload_required": True,
+                "remote": True,
+            },
+        }
+        media_diagnostics = {
+            "schema_version": 1,
+            "backend": "llama.cpp-server",
+            "model": self.model,
+            "handler": "server",
+            "capabilities": {"vision": False, "audio": False, "video": False},
+            "requested": manifest,
+            "evaluated": {
+                "media_count": 0,
+                "image_count": 0,
+                "audio_count": 0,
+                "video_count": 0,
+            },
+            "mtmd": {
+                "strict_pipeline": False,
+                "completion_succeeded": True,
+                "all_media_evaluated": not has_media,
+                "verification": "unverified_remote" if has_media else "no_media",
+            },
+            "model_unloaded_after_response": False,
+        }
+        return answer_payload, metrics, media_diagnostics
 
     def _get_decision_vocab_size(self) -> int:
         if self._decision_vocab_size is not None:

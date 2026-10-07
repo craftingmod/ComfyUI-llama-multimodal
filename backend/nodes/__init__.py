@@ -12,10 +12,16 @@ from .llama_cpp_compact import (
     LlamaCppSequentialGenerateNode,
 )
 from .llama_cpp_decision import (
+    LlamaCppBuildNoulNode,
+    LlamaCppBuildQuestionNode,
     LlamaCppCreateQuestionFromInputNode,
+    LlamaCppDecideSystemOneNode,
+    LlamaCppDecideSystemOneMediaSequentialNode,
+    LlamaCppDecideSystemOnePromptSequentialNode,
     LlamaCppDecideMediaSequentialNode,
     LlamaCppDecidePromptSequentialNode,
     LlamaCppDecideSessionNode,
+    LlamaCppExtractAnswerNode,
 )
 from .llama_cpp_diagnostics import (
     LlamaCppLegacyMediaDiagnosticsNode,
@@ -52,10 +58,16 @@ __all__ = [
     "LlamaCppCreateSessionNode",
     "LlamaCppCreateRuntimeSessionNode",
     "LlamaCppConnectSessionNode",
+    "LlamaCppBuildQuestionNode",
+    "LlamaCppBuildNoulNode",
     "LlamaCppCreateQuestionFromInputNode",
+    "LlamaCppDecideSystemOneNode",
+    "LlamaCppDecideSystemOneMediaSequentialNode",
+    "LlamaCppDecideSystemOnePromptSequentialNode",
     "LlamaCppDecideMediaSequentialNode",
     "LlamaCppDecidePromptSequentialNode",
     "LlamaCppDecideSessionNode",
+    "LlamaCppExtractAnswerNode",
     "LlamaCppModelProfileNode",
     "LlamaCppLegacyModelProfileNode",
     "LlamaCppNGramSpeculativeConfigNode",

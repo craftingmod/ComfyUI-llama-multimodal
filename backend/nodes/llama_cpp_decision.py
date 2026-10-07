@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from time import perf_counter
 from typing import Any
@@ -11,7 +12,10 @@ except ImportError:  # pragma: no cover - compatibility with newer ComfyUI build
     from comfy_api.latest import io
 
 from ..backends.llama_cpp import LlamaCppDecisionResult, LlamaCppSession
-from ..backends.llama_cpp_server import LlamaCppServerSession
+from ..backends.llama_cpp_server import (
+    LlamaCppServerSession,
+    normalize_systemone_question,
+)
 from ..core import (
     InputNormalizationError,
     normalize_media,
@@ -28,6 +32,7 @@ from .llama_cpp_diagnostics import LlamaCppMediaDiagnosticsType
 from .llama_cpp_session import LlamaCppSessionType
 
 LlamaCppQuestionType = io.Custom("OLLAMA_IMAGE_LIST_LLAMA_CPP_QUESTION")
+LlamaCppAnswerType = io.Custom("OLLAMA_IMAGE_LIST_LLAMA_CPP_ANSWER")
 MAX_ANSWERS = 26
 
 
@@ -59,10 +64,181 @@ def _question_from_input_lists(question: Any, answers: Any) -> dict[str, Any]:
     return make_question_payload(question[0], answers)
 
 
+def make_systemone_question_payload(
+    question: Any, answers: Any, question_type: Any = "choice"
+) -> dict[str, Any]:
+    return normalize_systemone_question(
+        {"type": question_type, "question": question, "answer": answers}
+    )
+
+
+def _systemone_question_from_input_lists(
+    question: Any, answers: Any, question_type: Any
+) -> dict[str, Any]:
+    if not isinstance(question, list) or len(question) != 1:
+        raise InputNormalizationError(
+            "question must resolve to exactly one STRING value."
+        )
+    if not isinstance(question_type, list) or len(question_type) != 1:
+        raise InputNormalizationError("type must resolve to exactly one COMBO value.")
+    if not isinstance(answers, list) or any(
+        isinstance(value, (list, tuple)) for value in answers
+    ):
+        raise InputNormalizationError("answer must be one flat ComfyUI STRING list.")
+    return make_systemone_question_payload(question[0], answers, question_type[0])
+
+
+def _validated_answer_payload(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != {
+        "type",
+        "selected",
+        "value",
+        "probabilities",
+        "result",
+    }:
+        raise InputNormalizationError("answer must be a System One Answer payload.")
+    answer_type = value["type"]
+    selected = value["selected"]
+    number = value["value"]
+    probabilities = value["probabilities"]
+    result = value["result"]
+    if not isinstance(answer_type, str) or answer_type not in {
+        "choice",
+        "score",
+        "noul",
+    }:
+        raise InputNormalizationError("answer type is unsupported.")
+    if not isinstance(selected, str):
+        raise InputNormalizationError("answer selected must be a string.")
+    if isinstance(number, bool) or not isinstance(number, (int, float)):
+        raise InputNormalizationError("answer value must be a finite number.")
+    try:
+        number = float(number)
+    except OverflowError as exc:
+        raise InputNormalizationError(
+            "answer value must be a finite number."
+        ) from exc
+    if not math.isfinite(number):
+        raise InputNormalizationError("answer value must be a finite number.")
+    if not isinstance(probabilities, list) or any(
+        isinstance(item, bool)
+        or not isinstance(item, (int, float))
+        or not 0.0 <= item <= 1.0
+        for item in probabilities
+    ):
+        raise InputNormalizationError("answer probabilities must be a finite list.")
+    if len(probabilities) < 2 or not math.isclose(
+        math.fsum(probabilities), 1.0, rel_tol=0.0, abs_tol=1e-6
+    ):
+        raise InputNormalizationError("answer probabilities must sum to 1.")
+    if not isinstance(result, Mapping):
+        raise InputNormalizationError("answer result must be an object.")
+
+    result_type = result.get("type")
+    if result_type != answer_type:
+        raise InputNormalizationError("answer result type does not match its payload.")
+    if answer_type == "choice":
+        result_probabilities = result.get("probabilities")
+        if (
+            not selected
+            or len(probabilities) > 26
+            or result.get("choice") != selected
+            or not isinstance(result_probabilities, Mapping)
+            or any(not isinstance(key, str) for key in result_probabilities)
+            or selected not in result_probabilities
+            or len(result_probabilities) != len(probabilities)
+        ):
+            raise InputNormalizationError("choice Answer fields are inconsistent.")
+        raw_probabilities = list(result_probabilities.values())
+        if any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not 0.0 <= item <= 1.0
+            for item in raw_probabilities
+        ) or not math.isclose(
+            math.fsum(raw_probabilities), 1.0, rel_tol=0.0, abs_tol=1e-6
+        ):
+            raise InputNormalizationError("choice Answer fields are inconsistent.")
+        selected_probability = result_probabilities[selected]
+        if (
+            isinstance(selected_probability, bool)
+            or not isinstance(selected_probability, (int, float))
+            or not 0.0 <= selected_probability <= 1.0
+            or float(selected_probability) != number
+            or sorted(float(item) for item in raw_probabilities)
+            != sorted(float(item) for item in probabilities)
+        ):
+            raise InputNormalizationError("choice Answer fields are inconsistent.")
+    elif answer_type == "score":
+        expected_keys = [str(index) for index in range(len(probabilities))]
+        result_probabilities = result.get("probabilities")
+        legend = result.get("legend")
+        result_score = result.get("score")
+        if (
+            selected
+            or len(probabilities) > 10
+            or not isinstance(result_probabilities, Mapping)
+            or set(result_probabilities) != set(expected_keys)
+            or not isinstance(legend, Mapping)
+            or set(legend) != set(expected_keys)
+            or any(
+                not isinstance(legend[key], str) or not legend[key].strip()
+                for key in expected_keys
+            )
+            or len(set(legend.values())) != len(expected_keys)
+            or not 0.0 <= number <= len(probabilities) - 1
+            or isinstance(result_score, bool)
+            or not isinstance(result_score, (int, float))
+            or not 0.0 <= result_score <= len(probabilities) - 1
+            or float(result_score) != number
+        ):
+            raise InputNormalizationError("score Answer fields are inconsistent.")
+        raw_probabilities = [result_probabilities[key] for key in expected_keys]
+        if any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not 0.0 <= item <= 1.0
+            for item in raw_probabilities
+        ) or [float(item) for item in raw_probabilities] != [
+            float(item) for item in probabilities
+        ]:
+            raise InputNormalizationError("score Answer fields are inconsistent.")
+    else:
+        result_noul = result.get("noul")
+        if (
+            selected
+            or len(probabilities) != 2
+            or not 0.0 <= number <= 1.0
+            or isinstance(result_noul, bool)
+            or not isinstance(result_noul, (int, float))
+            or not 0.0 <= result_noul <= 1.0
+            or float(result_noul) != number
+            or float(probabilities[0]) != 1.0 - number
+            or float(probabilities[1]) != number
+        ):
+            raise InputNormalizationError("noul Answer fields are inconsistent.")
+
+    try:
+        result_json = json.dumps(
+            dict(result), ensure_ascii=False, indent=2, allow_nan=False
+        )
+    except (TypeError, ValueError) as exc:
+        raise InputNormalizationError(
+            "answer result must contain JSON values."
+        ) from exc
+    return {
+        "selected": selected,
+        "value": number,
+        "noul": number >= 0.5 if answer_type == "noul" else None,
+        "probabilities": [float(item) for item in probabilities],
+        "result_json": result_json,
+    }
+
+
 def _validated_question_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, Mapping) or set(payload) != {"question", "answer"}:
         raise InputNormalizationError(
-            "question must come from a [llama.cpp] Create Question From Input node."
+            "question must come from a [llama.cpp] Build Question (Prefill) node."
         )
     return make_question_payload(payload["question"], payload["answer"])
 
@@ -154,6 +330,13 @@ def _flat_question_payloads(value: Any) -> list[dict[str, Any]]:
     return [_validated_question_payload(item) for item in values]
 
 
+def _flat_systemone_question_payloads(value: Any) -> list[dict[str, Any]]:
+    values = value if isinstance(value, (list, tuple)) else [value]
+    if not values:
+        raise InputNormalizationError("question must contain at least one payload.")
+    return [normalize_systemone_question(item) for item in values]
+
+
 def _broadcast_values(values: list[Any], count: int, name: str) -> list[Any]:
     if len(values) == 1:
         return values * count
@@ -170,6 +353,52 @@ def _decision_context(system: str, context: str) -> str:
         f"Context:\n{context}" if context else "",
     ]
     return "\n\n".join(part for part in context_parts if part)
+
+
+def _systemone_inputs() -> list[Any]:
+    return [
+        LlamaCppSessionType.Input("session"),
+        io.String.Input("system", default="", multiline=True, dynamic_prompts=False),
+        io.String.Input("context", default="", multiline=True, dynamic_prompts=False),
+        LlamaCppQuestionType.Input("question"),
+        io.Image.Input("images", optional=True),
+        io.Boolean.Input(
+            "session_unload",
+            default=False,
+            label_on="Unload",
+            label_off="Keep",
+            tooltip="Unload the session after all System One requests.",
+        ),
+    ]
+
+
+def _systemone_outputs(*, is_output_list: bool = False) -> list[Any]:
+    return [
+        LlamaCppAnswerType.Output("answer", is_output_list=is_output_list),
+        io.String.Output(
+            "metrics_json", display_name="metrics", is_output_list=is_output_list
+        ),
+        LlamaCppMediaDiagnosticsType.Output(
+            "media_diagnostics",
+            display_name="media_diagnostics",
+            is_output_list=is_output_list,
+        ),
+        LlamaCppSessionType.Output("session", display_name="session"),
+    ]
+
+
+def _systemone_output_values(
+    result: tuple[dict[str, Any], dict[str, Any], dict[str, Any]], *, unloaded: bool
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    answer, metrics, media_diagnostics = result
+    metrics = dict(metrics)
+    metrics["model_unloaded"] = unloaded
+    if isinstance(metrics.get("session"), dict):
+        metrics["session"] = dict(metrics["session"])
+        metrics["session"]["unload_required"] = not unloaded
+    media_diagnostics = dict(media_diagnostics)
+    media_diagnostics["model_unloaded_after_response"] = unloaded
+    return answer, json.dumps(metrics, ensure_ascii=False, indent=2), media_diagnostics
 
 
 def _run_decision(
@@ -294,8 +523,8 @@ class LlamaCppCreateQuestionFromInputNode(io.ComfyNode):
     def define_schema(cls) -> io.Schema:
         return io.Schema(
             node_id="LlamaCppMtmd_CreateQuestionFromInput",
-            display_name="[llama.cpp] Create Question From Input",
-            category=f"{BASE_CATEGORY}/decision",
+            display_name="[llama.cpp] Build Question (Prefill)",
+            category=f"{BASE_CATEGORY}/decision/prefill",
             description=(
                 "Combines one STRING question with a flat ComfyUI STRING list of answers."
             ),
@@ -319,13 +548,79 @@ class LlamaCppCreateQuestionFromInputNode(io.ComfyNode):
         return io.NodeOutput(_question_from_input_lists(question, answer))
 
 
+class LlamaCppBuildQuestionNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="LlamaCppMtmd_BuildQuestion",
+            display_name="[llama.cpp] Build Question",
+            category=f"{BASE_CATEGORY}/decision/system_one",
+            description="Builds a choice or ordered score question for System One.",
+            is_input_list=True,
+            is_experimental=True,
+            inputs=[
+                io.String.Input(
+                    "question",
+                    default="",
+                    multiline=True,
+                    dynamic_prompts=False,
+                    force_input=True,
+                ),
+                io.String.Input(
+                    "answer",
+                    force_input=True,
+                    tooltip=(
+                        "Choice requires 2–26 unique options; score requires 2–10 "
+                        "unique levels in lowest-to-highest order."
+                    ),
+                ),
+                io.Combo.Input("type", options=["choice", "score"], default="choice"),
+            ],
+            outputs=[LlamaCppQuestionType.Output("question")],
+        )
+
+    @classmethod
+    def execute(cls, question: Any, answer: Any, type: Any) -> io.NodeOutput:
+        return io.NodeOutput(
+            _systemone_question_from_input_lists(question, answer, type)
+        )
+
+
+class LlamaCppBuildNoulNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="LlamaCppMtmd_BuildNoul",
+            display_name="[llama.cpp] Build Noul",
+            category=f"{BASE_CATEGORY}/decision/system_one",
+            description="Builds a true-or-false probability question for System One.",
+            is_experimental=True,
+            inputs=[
+                io.String.Input(
+                    "question",
+                    default="",
+                    multiline=True,
+                    dynamic_prompts=False,
+                ),
+            ],
+            outputs=[LlamaCppQuestionType.Output("question")],
+        )
+
+    @classmethod
+    def execute(cls, question: Any) -> io.NodeOutput:
+        payload = normalize_systemone_question(
+            {"type": "noul", "question": unwrap_required_scalar("question", question)}
+        )
+        return io.NodeOutput(payload)
+
+
 class LlamaCppDecideSessionNode(io.ComfyNode):
     @classmethod
     def define_schema(cls) -> io.Schema:
         return io.Schema(
             node_id="LlamaCppMtmd_Decide",
-            display_name="[llama.cpp] Decide",
-            category=f"{BASE_CATEGORY}/decision",
+            display_name="[llama.cpp] Prefill Decide",
+            category=f"{BASE_CATEGORY}/decision/prefill",
             description=(
                 "Scores letter-token choices with a Native Session prefill or a Runtime "
                 "or Connect Session's constrained llama-server completion. Optional media "
@@ -405,13 +700,275 @@ class LlamaCppDecideSessionNode(io.ComfyNode):
         )
 
 
+class LlamaCppDecideSystemOneNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="LlamaCppMtmd_DecideSystemOne",
+            display_name="[llama.cpp] System One Decide",
+            category=f"{BASE_CATEGORY}/decision/system_one",
+            description=(
+                "Answers one typed choice, score, or noul question with a Runtime or "
+                "Connect Session using llama.cpp's System One API."
+            ),
+            not_idempotent=True,
+            is_experimental=True,
+            inputs=_systemone_inputs(),
+            outputs=_systemone_outputs(),
+        )
+
+    @classmethod
+    def execute(
+        cls,
+        session: Any,
+        system: Any,
+        context: Any,
+        question: Any,
+        images: Any = None,
+        session_unload: Any = False,
+    ) -> io.NodeOutput:
+        resolved_session = unwrap_required_scalar("session", session)
+        if not isinstance(resolved_session, LlamaCppServerSession):
+            raise InputNormalizationError(
+                "System One Decide requires a Runtime or Connect Session; "
+                "Native sessions are unsupported."
+            )
+        resolved_system = unwrap_required_scalar("system", system)
+        resolved_context = unwrap_required_scalar("context", context)
+        if not isinstance(resolved_system, str) or not isinstance(
+            resolved_context, str
+        ):
+            raise InputNormalizationError("system and context must be strings.")
+        payload = normalize_systemone_question(
+            unwrap_required_scalar("question", question)
+        )
+        unload = unwrap_required_scalar("session_unload", session_unload)
+        if not isinstance(unload, bool):
+            raise InputNormalizationError("session_unload must be a boolean.")
+
+        result = resolved_session.systemone(
+            state=_decision_context(resolved_system, resolved_context),
+            question=payload,
+            media=normalize_media(images=images),
+        )
+        if unload:
+            resolved_session.close()
+        return io.NodeOutput(
+            *_systemone_output_values(result, unloaded=unload),
+            resolved_session,
+        )
+
+
+def _run_systemone_sequence(
+    session: LlamaCppServerSession,
+    system: str,
+    contexts: list[str],
+    questions: list[dict[str, Any]],
+    media_bundles: list[Any],
+    unload: bool,
+) -> io.NodeOutput:
+    contexts = _broadcast_values(contexts, len(media_bundles), "context")
+    questions = _broadcast_values(questions, len(media_bundles), "question")
+    try:
+        results = [
+            session.systemone(
+                state=_decision_context(system, item_context),
+                question=payload,
+                media=media,
+            )
+            for media, item_context, payload in zip(
+                media_bundles, contexts, questions, strict=True
+            )
+        ]
+    finally:
+        if unload:
+            session.close()
+
+    outputs = [
+        _systemone_output_values(
+            result, unloaded=unload and index == len(results) - 1
+        )
+        for index, result in enumerate(results)
+    ]
+    return io.NodeOutput(
+        [values[0] for values in outputs],
+        [values[1] for values in outputs],
+        [values[2] for values in outputs],
+        session,
+    )
+
+
+class LlamaCppDecideSystemOneMediaSequentialNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="LlamaCppMtmd_DecideSystemOneMediaSequential",
+            display_name="[llama.cpp] System One Decide (Media Sequential)",
+            category=f"{BASE_CATEGORY}/decision/system_one",
+            description=(
+                "Runs one System One decision per image, sharing one context and "
+                "question or accepting one for each image."
+            ),
+            is_input_list=True,
+            not_idempotent=True,
+            is_experimental=True,
+            inputs=_systemone_inputs(),
+            outputs=_systemone_outputs(is_output_list=True),
+        )
+
+    @classmethod
+    def execute(
+        cls,
+        session: Any,
+        system: Any,
+        context: Any,
+        question: Any,
+        images: Any = None,
+        session_unload: Any = False,
+    ) -> io.NodeOutput:
+        resolved_session = unwrap_required_scalar("session", session)
+        if not isinstance(resolved_session, LlamaCppServerSession):
+            raise InputNormalizationError(
+                "System One requires a Runtime or Connect Session; "
+                "Native sessions are unsupported."
+            )
+        resolved_system = unwrap_required_scalar("system", system)
+        if not isinstance(resolved_system, str):
+            raise InputNormalizationError("system must be a string.")
+        unload = unwrap_required_scalar("session_unload", session_unload)
+        if not isinstance(unload, bool):
+            raise InputNormalizationError("session_unload must be a boolean.")
+
+        return _run_systemone_sequence(
+            resolved_session,
+            resolved_system,
+            _flat_contexts(context),
+            _flat_systemone_question_payloads(question),
+            _sequential_media_bundles(images=images),
+            unload,
+        )
+
+
+class LlamaCppDecideSystemOnePromptSequentialNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="LlamaCppMtmd_DecideSystemOnePromptSequential",
+            display_name="[llama.cpp] System One Decide (Prompt Sequential)",
+            category=f"{BASE_CATEGORY}/decision/system_one",
+            description=(
+                "Runs paired context and question lists independently against the same "
+                "complete image bundle."
+            ),
+            is_input_list=True,
+            not_idempotent=True,
+            is_experimental=True,
+            inputs=_systemone_inputs(),
+            outputs=_systemone_outputs(is_output_list=True),
+        )
+
+    @classmethod
+    def execute(
+        cls,
+        session: Any,
+        system: Any,
+        context: Any,
+        question: Any,
+        images: Any = None,
+        session_unload: Any = False,
+    ) -> io.NodeOutput:
+        resolved_session = unwrap_required_scalar("session", session)
+        if not isinstance(resolved_session, LlamaCppServerSession):
+            raise InputNormalizationError(
+                "System One requires a Runtime or Connect Session; "
+                "Native sessions are unsupported."
+            )
+        resolved_system = unwrap_required_scalar("system", system)
+        if not isinstance(resolved_system, str):
+            raise InputNormalizationError("system must be a string.")
+        unload = unwrap_required_scalar("session_unload", session_unload)
+        if not isinstance(unload, bool):
+            raise InputNormalizationError("session_unload must be a boolean.")
+
+        contexts = _flat_contexts(context)
+        questions = _flat_systemone_question_payloads(question)
+        count = max(len(contexts), len(questions))
+        return _run_systemone_sequence(
+            resolved_session,
+            resolved_system,
+            contexts,
+            questions,
+            [normalize_media(images=images)] * count,
+            unload,
+        )
+
+
+class LlamaCppExtractAnswerNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="LlamaCppMtmd_ExtractAnswer",
+            display_name="[llama.cpp] Extract Answer",
+            category=f"{BASE_CATEGORY}/decision",
+            description=(
+                "Value is the selected choice probability, the expected 0-based score "
+                "level, or P(true) for noul. Probabilities follow input-answer order; "
+                "noul uses [false, true]."
+            ),
+            is_experimental=True,
+            inputs=[LlamaCppAnswerType.Input("answer")],
+            outputs=[
+                io.String.Output(
+                    "selected",
+                    tooltip="Selected choice option; empty for score and noul.",
+                ),
+                io.Float.Output(
+                    "value",
+                    tooltip=(
+                        "Choice: selected option probability. Score: expected "
+                        "0-based level index. Noul: probability of true."
+                    ),
+                ),
+                io.Boolean.Output(
+                    "noul",
+                    tooltip=(
+                        "For noul answers, true when P(true) is at least 0.5; "
+                        "None for choice and score answers."
+                    ),
+                ),
+                io.Float.Output(
+                    "probabilities",
+                    is_output_list=True,
+                    tooltip=(
+                        "Input-answer order for choice/score; [false, true] for noul."
+                    ),
+                ),
+                io.String.Output(
+                    "result_json",
+                    tooltip="Complete raw per-question System One answer JSON.",
+                ),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, answer: Any) -> io.NodeOutput:
+        values = _validated_answer_payload(unwrap_required_scalar("answer", answer))
+        return io.NodeOutput(
+            values["selected"],
+            values["value"],
+            values["noul"],
+            values["probabilities"],
+            values["result_json"],
+        )
+
+
 class LlamaCppDecideMediaSequentialNode(io.ComfyNode):
     @classmethod
     def define_schema(cls) -> io.Schema:
         return io.Schema(
             node_id="LlamaCppMtmd_DecideMediaSequential",
-            display_name="[llama.cpp] Decide (Media Sequential)",
-            category=f"{BASE_CATEGORY}/decision",
+            display_name="[llama.cpp] Prefill Decide (Media Sequential)",
+            category=f"{BASE_CATEGORY}/decision/prefill",
             description=(
                 "Runs one decision per atomic IMAGE, AUDIO, or VIDEO bundle in modality "
                 "order. A single context or question is shared, or provide one per item."
@@ -485,8 +1042,8 @@ class LlamaCppDecidePromptSequentialNode(io.ComfyNode):
     def define_schema(cls) -> io.Schema:
         return io.Schema(
             node_id="LlamaCppMtmd_DecidePromptSequential",
-            display_name="[llama.cpp] Decide (Prompt Sequential)",
-            category=f"{BASE_CATEGORY}/decision",
+            display_name="[llama.cpp] Prefill Decide (Prompt Sequential)",
+            category=f"{BASE_CATEGORY}/decision/prefill",
             description=(
                 "Runs paired context and question lists independently against the same "
                 "complete media bundle. Common-prefix KV reuse is attempted by default."
@@ -562,11 +1119,19 @@ class LlamaCppDecidePromptSequentialNode(io.ComfyNode):
 
 
 __all__ = [
+    "LlamaCppBuildNoulNode",
+    "LlamaCppBuildQuestionNode",
     "LlamaCppCreateQuestionFromInputNode",
+    "LlamaCppDecideSystemOneNode",
+    "LlamaCppDecideSystemOneMediaSequentialNode",
+    "LlamaCppDecideSystemOnePromptSequentialNode",
     "LlamaCppDecideMediaSequentialNode",
     "LlamaCppDecidePromptSequentialNode",
     "LlamaCppDecideSessionNode",
+    "LlamaCppExtractAnswerNode",
+    "LlamaCppAnswerType",
     "LlamaCppQuestionType",
     "MAX_ANSWERS",
+    "make_systemone_question_payload",
     "make_question_payload",
 ]
