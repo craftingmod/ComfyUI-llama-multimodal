@@ -35,7 +35,7 @@ Generate descriptions from multiple media inputs. This example sends two images 
 
 ![SystemOne workflow](./llamacpp_systemone.webp)
 
-[Download workflow](./llamacpp_systemone.json)
+[Download workflow](./llamacpp_systemone.json) | [Download model](https://huggingface.co/bartowski/Cloudflare_clef-flash-GGUF)
 
 Noul / Score system one about an image. This example asks whether the scene is morning, evening, afternoon, night and whether water is present, then displays the selected scores and their probabilities.
 
