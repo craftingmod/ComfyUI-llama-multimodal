@@ -31,10 +31,20 @@ Generate text from a prompt. Edit `system` to set the instructions and `prompt` 
 
 Generate descriptions from multiple media inputs. This example sends two images and an audio clip through Sequential Generate and displays the responses in the Responses node.
 
-## Choice (System-One)
+## SystemOne
+
+![SystemOne workflow](./llamacpp_systemone.webp)
+
+[Download workflow](./llamacpp_systemone.json)
+
+Noul / Score system one about an image. This example asks whether the scene is morning, evening, afternoon, night and whether water is present, then displays the selected scores and their probabilities.
+
+## Choice (Prefill - Legacy)
 
 ![Choice workflow](./llamacpp_choice.avif)
 
 [Download workflow](./llamacpp_choice.json)
 
 Compare candidate answers to questions about an image. This example asks whether the scene is day or night and whether water is present, then displays the selected answers and their probabilities.
+
+It uses other way to get choice without `systemone` route, but might be ineffective on `systemone` models.
