@@ -527,7 +527,6 @@ class LlamaCppCreateQuestionFromInputNode(io.ComfyNode):
                 "Combines one STRING question with a flat ComfyUI STRING list of answers."
             ),
             is_input_list=True,
-            is_experimental=True,
             inputs=[
                 io.String.Input(
                     "question",
@@ -555,7 +554,6 @@ class LlamaCppBuildQuestionNode(io.ComfyNode):
             category=f"{BASE_CATEGORY}/decision/system_one",
             description="Builds a choice or ordered score question for System One.",
             is_input_list=True,
-            is_experimental=True,
             inputs=[
                 io.String.Input(
                     "question",
@@ -592,7 +590,6 @@ class LlamaCppBuildNoulNode(io.ComfyNode):
             display_name="[llama.cpp] Build Noul",
             category=f"{BASE_CATEGORY}/decision/system_one",
             description="Builds a true-or-false probability question for System One.",
-            is_experimental=True,
             inputs=[
                 io.String.Input(
                     "question",
@@ -626,7 +623,6 @@ class LlamaCppDecideSessionNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_decision_inputs(),
             outputs=_decision_outputs(),
         )
@@ -710,7 +706,6 @@ class LlamaCppDecideSystemOneNode(io.ComfyNode):
                 "Connect Session using llama.cpp's System One API."
             ),
             not_idempotent=True,
-            is_experimental=True,
             inputs=_systemone_inputs(),
             outputs=_systemone_outputs(),
         )
@@ -807,7 +802,6 @@ class LlamaCppDecideSystemOneMediaSequentialNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_systemone_inputs(),
             outputs=_systemone_outputs(is_output_list=True),
         )
@@ -858,7 +852,6 @@ class LlamaCppDecideSystemOnePromptSequentialNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_systemone_inputs(),
             outputs=_systemone_outputs(is_output_list=True),
         )
@@ -911,7 +904,6 @@ class LlamaCppExtractAnswerNode(io.ComfyNode):
                 "level, or P(true) for noul. Probabilities follow input-answer order; "
                 "noul uses [false, true]."
             ),
-            is_experimental=True,
             inputs=[LlamaCppAnswerType.Input("answer")],
             outputs=[
                 io.String.Output(
@@ -971,7 +963,6 @@ class LlamaCppDecideMediaSequentialNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_decision_inputs(),
             outputs=_decision_outputs(is_output_list=True),
         )
@@ -1046,7 +1037,6 @@ class LlamaCppDecidePromptSequentialNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_decision_inputs(include_reuse_kv_cache=True),
             outputs=_decision_outputs(is_output_list=True),
         )

@@ -408,7 +408,6 @@ class LlamaCppConnectSessionNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=[
                 io.String.Input(
                     "url",
@@ -482,7 +481,6 @@ class LlamaCppCreateSessionNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=[
                 io.Combo.Input(
                     "model_path", options=model_options, default=model_options[0]
@@ -555,7 +553,6 @@ class LlamaCppCreateRuntimeSessionNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=[
                 io.Combo.Input(
                     "model_path", options=model_options, default=model_options[0]
@@ -667,7 +664,6 @@ class LlamaCppSessionGenerateNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_session_generate_inputs(),
             outputs=_session_generate_outputs(),
         )
@@ -748,7 +744,6 @@ class LlamaCppSessionSequentialGenerateNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_session_generate_inputs(),
             outputs=_session_generate_outputs(is_output_list=True),
         )
@@ -835,7 +830,6 @@ class LlamaCppSessionPromptSequentialGenerateNode(io.ComfyNode):
             ),
             is_input_list=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=_session_prompt_generate_inputs(),
             outputs=_session_generate_outputs(is_output_list=True),
         )
@@ -935,7 +929,6 @@ class LlamaCppUnloadSessionNode(io.ComfyNode):
             is_input_list=True,
             is_output_node=True,
             not_idempotent=True,
-            is_experimental=True,
             inputs=[
                 LlamaCppSessionType.Input("session"),
                 io.Custom("*").Input(
