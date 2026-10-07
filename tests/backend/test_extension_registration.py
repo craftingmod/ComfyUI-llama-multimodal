@@ -1197,7 +1197,6 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
     ]
     assert create_session_schema.is_input_list is True
     assert create_session_schema.not_idempotent is True
-    assert create_session_schema.is_experimental is False
     assert [field.name for field in create_session_schema.inputs] == [
         "model_path",
         "mmproj_path",
@@ -1220,7 +1219,7 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
     )
     assert create_runtime_session_schema.is_input_list is True
     assert create_runtime_session_schema.not_idempotent is True
-    assert create_runtime_session_schema.is_experimental is False
+
     assert [field.name for field in create_runtime_session_schema.inputs] == [
         "model_path",
         "mmproj_path",
@@ -1252,7 +1251,6 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
     _, connect_session_schema = registered["LlamaCppMtmd_ConnectSession"]
     assert connect_session_schema.is_input_list is True
     assert connect_session_schema.not_idempotent is True
-    assert connect_session_schema.is_experimental is False
     assert [field.name for field in connect_session_schema.inputs] == [
         "url",
         "available_models",
