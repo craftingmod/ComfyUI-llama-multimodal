@@ -36,9 +36,7 @@ def _transport_for(response, *, status=200):
     return transport, calls
 
 
-def _new_session(
-    response, *, status=200, session_type=LlamaCppServerSession, **kwargs
-):
+def _new_session(response, *, status=200, session_type=LlamaCppServerSession, **kwargs):
     transport, calls = _transport_for(response, status=status)
     session = session_type(
         url="http://localhost:8080",
@@ -88,24 +86,30 @@ def test_systemone_question_builders_and_legacy_choice_payload(monkeypatch):
         "question": "Legacy?",
         "answer": ["yes", "no"],
     }
-    assert len(
-        normalize_systemone_question(
-            {
-                "type": "choice",
-                "question": "Pick",
-                "answer": [f"option {index}" for index in range(26)],
-            }
-        )["answer"]
-    ) == 26
-    assert len(
-        normalize_systemone_question(
-            {
-                "type": "score",
-                "question": "Rate",
-                "answer": [f"level {index}" for index in range(10)],
-            }
-        )["answer"]
-    ) == 10
+    assert (
+        len(
+            normalize_systemone_question(
+                {
+                    "type": "choice",
+                    "question": "Pick",
+                    "answer": [f"option {index}" for index in range(26)],
+                }
+            )["answer"]
+        )
+        == 26
+    )
+    assert (
+        len(
+            normalize_systemone_question(
+                {
+                    "type": "score",
+                    "question": "Rate",
+                    "answer": [f"level {index}" for index in range(10)],
+                }
+            )["answer"]
+        )
+        == 10
+    )
 
     for values in (
         {"type": "choice", "question": "Pick", "answer": ["one"]},
@@ -346,10 +350,12 @@ def test_extract_answer_returns_atomic_copy_and_checks_schema_and_consistency(
     assert [field.name for field in schema.outputs] == [
         "selected",
         "value",
+        "noul",
         "probabilities",
         "result_json",
     ]
-    probabilities_field = schema.outputs[2]
+    assert schema.outputs[2].data_type == "boolean"
+    probabilities_field = schema.outputs[3]
     assert probabilities_field.data_type == "float"
     assert probabilities_field.options["is_output_list"] is True
 
@@ -368,10 +374,29 @@ def test_extract_answer_returns_atomic_copy_and_checks_schema_and_consistency(
     extracted = nodes.LlamaCppExtractAnswerNode.execute([payload])
     assert extracted[0] == "second"
     assert extracted[1] == 0.7
-    assert extracted[2] == [0.3, 0.7]
-    assert json.loads(extracted[3]) == payload["result"]
-    extracted[2].append(0.0)
+    assert extracted[2] is None
+    assert extracted[3] == [0.3, 0.7]
+    assert json.loads(extracted[4]) == payload["result"]
+    extracted[3].append(0.0)
     assert payload["probabilities"] == [0.3, 0.7]
+
+    noul_result = {"type": "noul", "noul": 0.75}
+    noul = nodes.LlamaCppExtractAnswerNode.execute(
+        [
+            {
+                "type": "noul",
+                "selected": "",
+                "value": 0.75,
+                "probabilities": [0.25, 0.75],
+                "result": noul_result,
+            }
+        ]
+    )
+    assert noul[0] == ""
+    assert noul[1] == 0.75
+    assert noul[2] is True
+    assert noul[3] == [0.25, 0.75]
+    assert json.loads(noul[4]) == noul_result
 
     bad_payloads = [
         {**payload, "type": []},
@@ -475,7 +500,9 @@ def test_systemone_unload_uses_connect_and_runtime_ownership(monkeypatch):
     finally:
         runtime.close()
 
-    with pytest.raises(InputNormalizationError, match="Native sessions are unsupported"):
+    with pytest.raises(
+        InputNormalizationError, match="Native sessions are unsupported"
+    ):
         nodes.LlamaCppDecideSystemOneNode.execute(
             [object()], [""], [""], [{"type": "noul", "question": "Ready?"}]
         )

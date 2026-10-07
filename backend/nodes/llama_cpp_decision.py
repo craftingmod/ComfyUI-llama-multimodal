@@ -115,9 +115,7 @@ def _validated_answer_payload(value: Any) -> dict[str, Any]:
     try:
         number = float(number)
     except OverflowError as exc:
-        raise InputNormalizationError(
-            "answer value must be a finite number."
-        ) from exc
+        raise InputNormalizationError("answer value must be a finite number.") from exc
     if not math.isfinite(number):
         raise InputNormalizationError("answer value must be a finite number.")
     if not isinstance(probabilities, list) or any(
@@ -785,9 +783,7 @@ def _run_systemone_sequence(
             session.close()
 
     outputs = [
-        _systemone_output_values(
-            result, unloaded=unload and index == len(results) - 1
-        )
+        _systemone_output_values(result, unloaded=unload and index == len(results) - 1)
         for index, result in enumerate(results)
     ]
     return io.NodeOutput(

@@ -254,9 +254,7 @@ def _systemone_probability_values(
 
 def normalize_systemone_question(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
-        raise InputNormalizationError(
-            "question must be a System One question object."
-        )
+        raise InputNormalizationError("question must be a System One question object.")
     fields = set(value)
     if fields == {"question", "answer"}:
         question_type = "choice"
@@ -272,9 +270,7 @@ def normalize_systemone_question(value: Any) -> dict[str, Any]:
             or question_type not in {"choice", "score", "noul"}
             or fields != expected_fields
         ):
-            raise InputNormalizationError(
-                "question is not a valid System One payload."
-            )
+            raise InputNormalizationError("question is not a valid System One payload.")
 
     instructions = value.get("question")
     if not isinstance(instructions, str) or not instructions.strip():
@@ -284,17 +280,12 @@ def normalize_systemone_question(value: Any) -> dict[str, Any]:
 
     answers = value.get("answer")
     maximum = 26 if question_type == "choice" else 10
-    if (
-        not isinstance(answers, (list, tuple))
-        or not 2 <= len(answers) <= maximum
-    ):
+    if not isinstance(answers, (list, tuple)) or not 2 <= len(answers) <= maximum:
         label = "answers" if question_type == "choice" else "score levels"
         raise InputNormalizationError(
             f"{label} must contain between 2 and {maximum} values."
         )
-    if any(
-        not isinstance(answer, str) or not answer.strip() for answer in answers
-    ):
+    if any(not isinstance(answer, str) or not answer.strip() for answer in answers):
         raise InputNormalizationError("answer values must be non-empty strings.")
     if len(set(answers)) != len(answers):
         raise InputNormalizationError("answer values must be unique.")
@@ -334,8 +325,7 @@ def _systemone_answer_payload(
             not isinstance(legend, dict)
             or set(legend) != set(keys)
             or any(
-                legend[key] != level
-                for key, level in zip(keys, levels, strict=True)
+                legend[key] != level for key, level in zip(keys, levels, strict=True)
             )
         ):
             raise BackendError(
@@ -347,9 +337,7 @@ def _systemone_answer_payload(
             or not isinstance(value, (int, float))
             or not 0.0 <= value <= len(levels) - 1
         ):
-            raise BackendError(
-                "System One response score is outside its level range."
-            )
+            raise BackendError("System One response score is outside its level range.")
         value = float(value)
         selected = ""
     else:

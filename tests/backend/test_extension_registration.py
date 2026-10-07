@@ -1358,6 +1358,7 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
     assert [field.name for field in extract_answer_schema.outputs] == [
         "selected",
         "value",
+        "noul",
         "probabilities",
         "result_json",
     ]
@@ -1365,8 +1366,9 @@ def test_extension_registers_v3_node_schemas_and_models_route(monkeypatch):
         "OLLAMA_IMAGE_LIST_LLAMA_CPP_ANSWER"
     )
     assert extract_answer_schema.outputs[1].data_type == "float"
-    assert extract_answer_schema.outputs[2].data_type == "float"
-    assert extract_answer_schema.outputs[2].options["is_output_list"] is True
+    assert extract_answer_schema.outputs[2].data_type == "boolean"
+    assert extract_answer_schema.outputs[3].data_type == "float"
+    assert extract_answer_schema.outputs[3].options["is_output_list"] is True
     _, decide_media_schema = registered["LlamaCppMtmd_DecideMediaSequential"]
     assert decide_media_schema.is_input_list is True
     assert decide_media_schema.not_idempotent is True
